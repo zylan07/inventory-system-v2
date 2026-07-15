@@ -1,20 +1,33 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import ProductsClient from "./ProductsClient";
 import { useInventoryData } from "@/lib/useInventoryData";
 
 export default function ProductsPage() {
+  const { userRole } = useAuth();
+  const router = useRouter();
   const { data, loading, error, refresh } = useInventoryData();
 
-  let content;
+  useEffect(() => {
+    if (userRole && userRole !== 'Admin') {
+      router.push('/dashboard');
+    }
+  }, [userRole, router]);
 
   if (loading) {
-    content = <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
-  } else if (error || !data) {
-    content = <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
-  } else {
-    content = <ProductsClient initialData={data} refresh={refresh} />;
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  return content;
+  if (error || !data) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  }
+
+  if (!userRole || userRole !== 'Admin') {
+    return null;
+  }
+
+  return <ProductsClient initialData={data} refresh={refresh} />;
 }

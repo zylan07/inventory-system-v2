@@ -3,6 +3,11 @@ const { sendMail } = require('../utils/mailer');
 const { logAction } = require('../utils/auditLogger');
 
 exports.getTransactions = async (req, res) => {
+  const userRole = req.user?.role;
+  if (userRole === 'Basic User') {
+    return res.status(403).json({ success: false, message: 'Forbidden: Basic Users are not authorized to view transaction reports.' });
+  }
+
   try {
     const pool = getPool();
     // Join with products layer to return model number nicely
@@ -32,6 +37,16 @@ exports.createTransaction = async (req, res) => {
   try {
     const { type, product_id, quantity, warehouse_id, to_warehouse_id, narration, adjustmentType } = req.body;
     const userEmail = req.user?.email || 'System';
+    const userRole = req.user?.role;
+
+    if (userRole === 'Basic User' && type !== 'OUTWARD') {
+      await conn.rollback();
+      return res.status(403).json({ success: false, message: 'Forbidden: Basic Users can only perform Outward transactions.' });
+    }
+    if (userRole === 'Manager' && type === 'ADJUSTMENT') {
+      await conn.rollback();
+      return res.status(403).json({ success: false, message: 'Forbidden: Managers cannot perform Adjustment transactions.' });
+    }
 
     if (!type || !product_id || quantity === undefined || !warehouse_id) {
       await conn.rollback();

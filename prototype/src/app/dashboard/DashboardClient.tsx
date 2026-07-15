@@ -197,10 +197,11 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div 
-          className="stat-card clickable-kpi-card" 
-          onClick={() => router.push('/products')}
-          title="View Products Catalogue"
-          aria-label="View Products Catalogue"
+          className={`stat-card ${userRole === 'Admin' ? 'clickable-kpi-card' : ''}`} 
+          onClick={userRole === 'Admin' ? () => router.push('/products') : undefined}
+          title={userRole === 'Admin' ? "View Products Catalogue" : undefined}
+          aria-label={userRole === 'Admin' ? "View Products Catalogue" : undefined}
+          style={{ cursor: userRole === 'Admin' ? 'pointer' : 'default' }}
         >
           <div className="stat-label">Total SKUs</div>
           <div className="stat-value" style={{ color: 'var(--primary)' }}>{totalProducts}</div>

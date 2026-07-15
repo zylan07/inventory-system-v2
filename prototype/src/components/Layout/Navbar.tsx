@@ -73,7 +73,6 @@ export default function Navbar() {
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('INVENTRA');
-  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
 
   useEffect(() => {
     const fetchBranding = async () => {
@@ -94,50 +93,6 @@ export default function Navbar() {
     window.addEventListener('branding-update', handleBrandingUpdate);
     return () => window.removeEventListener('branding-update', handleBrandingUpdate);
   }, []);
-
-  const fetchMaintenanceStatus = async () => {
-    if (userRole !== 'Admin') return;
-    try {
-      const res = await apiFetch('/settings');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data && json.data.maintenance_mode) {
-          setMaintenanceEnabled(json.data.maintenance_mode.enabled);
-        }
-      }
-    } catch (e) {}
-  };
-
-  useEffect(() => {
-    fetchMaintenanceStatus();
-    const interval = setInterval(fetchMaintenanceStatus, 15000);
-    const handleBrandingUpdate = () => {
-      fetchMaintenanceStatus();
-    };
-    window.addEventListener('branding-update', handleBrandingUpdate);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('branding-update', handleBrandingUpdate);
-    };
-  }, [userRole]);
-
-  const handleDisableMaintenance = async () => {
-    try {
-      const res = await apiFetch('/settings/maintenance_mode', {
-        method: 'PUT',
-        body: JSON.stringify({
-          enabled: false,
-          message: 'System is currently under maintenance. Please try again later.'
-        })
-      });
-      if (res.ok) {
-        setMaintenanceEnabled(false);
-        window.dispatchEvent(new Event('branding-update'));
-      }
-    } catch (e) {
-      console.error('Failed to disable maintenance:', e);
-    }
-  };
 
   useEffect(() => {
     if (!userRole) return;
@@ -236,42 +191,7 @@ export default function Navbar() {
   });
 
   return (
-    <>
-      {maintenanceEnabled && userRole === 'Admin' && (
-        <div style={{
-          background: '#fef3c7',
-          borderBottom: '1px solid #fde68a',
-          color: '#92400e',
-          padding: '0.35rem 1.5rem',
-          fontSize: '0.8rem',
-          fontWeight: 700,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          zIndex: 1000,
-          fontFamily: 'Inter, sans-serif'
-        }}>
-          <span>⚠️ Maintenance Mode is currently enabled. System is locked for non-Admin users.</span>
-          <button 
-            type="button"
-            onClick={handleDisableMaintenance}
-            className="btn-secondary" 
-            style={{ 
-              padding: '0.15rem 0.5rem', 
-              fontSize: '0.725rem', 
-              background: '#ffffff', 
-              color: '#92400e', 
-              border: '1px solid #fde68a', 
-              cursor: 'pointer',
-              borderRadius: '4px',
-              fontWeight: 700
-            }}
-          >
-            Disable
-          </button>
-        </div>
-      )}
-      <header style={{
+    <header style={{
         height: '60px',
         background: '#ffffff',
         borderBottom: '1px solid var(--border)',
@@ -620,6 +540,5 @@ export default function Navbar() {
         `}} />
       </div>
     </header>
-    </>
   );
 }

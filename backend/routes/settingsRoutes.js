@@ -33,58 +33,7 @@ router.get('/', requireAdmin, async (req, res) => {
   }
 });
 
-// GET /settings/system-info - Fetch read-only system metrics
-router.get('/system-info', requireAdmin, async (req, res) => {
-  try {
-    const pool = getPool();
-    const [pRows] = await pool.query('SELECT COUNT(*) as count FROM products');
-    const [uRows] = await pool.query('SELECT COUNT(*) as count FROM users');
-    const [wRows] = await pool.query('SELECT COUNT(*) as count FROM warehouses');
-    const [tRows] = await pool.query('SELECT COUNT(*) as count FROM transactions');
-
-    // Fetch database schema size
-    const [sizeRows] = await pool.query(`
-      SELECT SUM(data_length + index_length) / 1024 / 1024 AS size_mb 
-      FROM information_schema.TABLES 
-      WHERE table_schema = ?
-    `, [process.env.DB_NAME || 'inventory_system']);
-    
-    const dbSize = sizeRows.length > 0 && sizeRows[0].size_mb 
-      ? parseFloat(sizeRows[0].size_mb).toFixed(2) 
-      : '0.08';
-
-    // Fetch last backup file date
-    let lastBackupTime = 'Never';
-    const backupsDir = path.join('./uploads', 'backups');
-    if (fs.existsSync(backupsDir)) {
-      const files = fs.readdirSync(backupsDir);
-      const bkps = files
-        .filter(f => f.startsWith('Inventory_Backup_') && f.endsWith('.json'))
-        .map(f => fs.statSync(path.join(backupsDir, f)).mtime);
-      if (bkps.length > 0) {
-        bkps.sort((a, b) => b.getTime() - a.getTime());
-        lastBackupTime = bkps[0].toISOString();
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
-        products: pRows[0].count,
-        users: uRows[0].count,
-        warehouses: wRows[0].count,
-        transactions: tRows[0].count,
-        dbSize,
-        lastBackupTime
-      }
-    });
-  } catch (err) {
-    console.error('Failed to get system info:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch system info' });
-  }
-});
-
-// PUT /settings/:key - Save specific settings updates
+// PUT /settings/:key - Save specific settings card
 router.put('/:key', requireAdmin, async (req, res) => {
   const { key } = req.params;
   const newValue = req.body;
@@ -99,7 +48,7 @@ router.put('/:key', requireAdmin, async (req, res) => {
       version = (parseInt(currentVal.versionMetadata.version) || 0) + 1;
     }
 
-    // 2. Fetch admin user full name
+    // 2. Fetch admin user name
     const [uRows] = await pool.query('SELECT name FROM users WHERE id = ?', [req.user.id]);
     const adminName = uRows.length > 0 ? uRows[0].name : req.user.email;
 
@@ -171,7 +120,7 @@ router.post('/logo', requireAdmin, upload.single('logo'), async (req, res) => {
       }
     }
 
-    // Save new file with unique timestamp filename to bust caches
+    // Save new file with unique timestamp filename
     const timestamp = Date.now();
     const ext = path.extname(req.file.originalname).toLowerCase();
     const allowedExts = ['.png', '.jpeg', '.jpg', '.webp'];
@@ -190,7 +139,7 @@ router.post('/logo', requireAdmin, upload.single('logo'), async (req, res) => {
 
     const oldVersion = info.versionMetadata ? info.versionMetadata.version : 0;
     const newInfo = {
-      ...info,
+      name: info.name || 'INVENTRA',
       logoUrl: newLogoUrl,
       versionMetadata: {
         version: oldVersion + 1,
@@ -248,7 +197,7 @@ router.delete('/logo', requireAdmin, async (req, res) => {
     // Update config
     const oldVersion = info.versionMetadata ? info.versionMetadata.version : 0;
     const newInfo = {
-      ...info,
+      name: info.name || 'INVENTRA',
       logoUrl: null,
       versionMetadata: {
         version: oldVersion + 1,
@@ -266,7 +215,7 @@ router.delete('/logo', requireAdmin, async (req, res) => {
       reference_id: null,
       old_value: { logoUrl: oldLogo },
       new_value: { logoUrl: null },
-      description: 'Removed company branding logo file.'
+      description: `Removed company branding logo file.`
     });
 
     res.json({ success: true, companyInfo: newInfo });
@@ -276,7 +225,7 @@ router.delete('/logo', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /settings/backup - Create structured database backup
+// POST /settings/backup - Create structured database backup returned in response
 router.post('/backup', requireAdmin, async (req, res) => {
   if (isDbOperationLocked) {
     return res.status(409).json({ success: false, message: 'Another database backup or restore operation is currently in progress. Please try again later.' });
@@ -298,11 +247,7 @@ router.post('/backup', requireAdmin, async (req, res) => {
       backupData[table] = rows;
     }
 
-    const timestamp = Date.now();
-    const dateStr = new Date().toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '');
-    const filename = `Inventory_Backup_${dateStr}.json`;
-
-    // 3. Compile backup JSON payload with structured version metadata
+    // 3. Compile backup JSON payload
     const backupPayload = {
       metadata: {
         created_by_name: adminName,
@@ -315,98 +260,24 @@ router.post('/backup', requireAdmin, async (req, res) => {
       data: backupData
     };
 
-    const backupsDir = path.join('./uploads', 'backups');
-    if (!fs.existsSync(backupsDir)) {
-      fs.mkdirSync(backupsDir, { recursive: true });
-    }
-
-    fs.writeFileSync(path.join(backupsDir, filename), JSON.stringify(backupPayload, null, 2));
-
     // Log backup creation
     await logAction(req, {
       module: 'Settings',
       action: 'CREATE_BACKUP',
-      reference_type: 'backup_file',
-      reference_id: filename,
+      reference_type: 'backup_action',
+      reference_id: 'generate',
       old_value: null,
-      new_value: { filename },
-      description: `Created structured inventory database backup: ${filename}`
+      new_value: null,
+      description: `Generated structured inventory database backup package.`
     });
 
-    res.json({ success: true, message: 'Backup created successfully', filename });
+    res.json({ success: true, data: backupPayload });
 
   } catch (err) {
     console.error('Backup creation failed:', err.message);
     res.status(500).json({ success: false, message: 'Backup creation failed: ' + err.message });
   } finally {
     isDbOperationLocked = false;
-  }
-});
-
-// GET /settings/backup-history - Fetch backups list
-router.get('/backup-history', requireAdmin, async (req, res) => {
-  const backupsDir = path.join('./uploads', 'backups');
-  if (!fs.existsSync(backupsDir)) {
-    return res.json({ success: true, data: [] });
-  }
-  try {
-    const files = fs.readdirSync(backupsDir);
-    const history = files
-      .filter(f => f.startsWith('Inventory_Backup_') && f.endsWith('.json'))
-      .map(f => {
-        const stats = fs.statSync(path.join(backupsDir, f));
-        return {
-          filename: f,
-          sizeBytes: stats.size,
-          createdAt: stats.mtime.toISOString()
-        };
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    res.json({ success: true, data: history });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to read backup history' });
-  }
-});
-
-// DELETE /settings/backup/:filename - Permanently delete backup file
-router.delete('/backup/:filename', requireAdmin, async (req, res) => {
-  const { filename } = req.params;
-  const safeFilename = path.basename(filename);
-  const filePath = path.join('./uploads', 'backups', safeFilename);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, message: 'Backup file not found' });
-  }
-
-  try {
-    fs.unlinkSync(filePath);
-
-    await logAction(req, {
-      module: 'Settings',
-      action: 'DELETE_BACKUP',
-      reference_type: 'backup_file',
-      reference_id: safeFilename,
-      old_value: { filename: safeFilename },
-      new_value: null,
-      description: `Permanently deleted backup file ${safeFilename}`
-    });
-
-    res.json({ success: true, message: 'Backup deleted successfully' });
-  } catch (err) {
-    console.error('Failed to delete backup:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to delete backup file' });
-  }
-});
-
-// GET /settings/backup/download/:filename - Download local backup
-router.get('/backup/download/:filename', requireAdmin, (req, res) => {
-  const { filename } = req.params;
-  const safeFilename = path.basename(filename);
-  const filePath = path.resolve('./uploads/backups', safeFilename);
-  if (fs.existsSync(filePath)) {
-    res.download(filePath);
-  } else {
-    res.status(404).json({ success: false, message: 'Backup file not found' });
   }
 });
 
@@ -470,7 +341,7 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
         }
       }
     } catch (restoreErr) {
-      // Trigger instant database rollback on SQL insert crashes
+      // Trigger database rollback on SQL insert crashes
       console.error('Restore insertion crashed. Initiating rollback...', restoreErr.message);
       for (const table of tables) {
         await pool.query(`TRUNCATE TABLE ${table}`);

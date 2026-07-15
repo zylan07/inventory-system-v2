@@ -23,6 +23,23 @@ export default function LoginPage() {
   
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error', id: number} | null>(null);
+  
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('INVENTRA');
+
+  useEffect(() => {
+    const fetchBranding = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/auth/branding');
+        const json = await res.json();
+        if (json.success && json.data) {
+          setLogoUrl(json.data.logoUrl || null);
+          setCompanyName(json.data.name || 'INVENTRA');
+        }
+      } catch (e) {}
+    };
+    fetchBranding();
+  }, []);
 
   useEffect(() => {
     if (userRole) {
@@ -199,9 +216,17 @@ export default function LoginPage() {
       )}
       <div style={{ width: '100%', maxWidth: '400px' }}>
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>📦</div>
+          {logoUrl ? (
+            <img 
+              src={`http://localhost:5000${logoUrl}`} 
+              alt="Company Logo" 
+              style={{ height: '60px', width: 'auto', objectFit: 'contain', borderRadius: '8px', marginBottom: '1rem' }} 
+            />
+          ) : (
+            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>📦</div>
+          )}
           <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.25rem' }}>
-            <span className="text-gradient">INVENTRA</span>
+            <span className="text-gradient">{companyName}</span>
           </h1>
           <p style={{ color: 'var(--foreground-muted)', fontSize: '0.9rem' }}>
             Inventory Management System

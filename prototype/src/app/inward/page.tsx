@@ -1,25 +1,38 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import TransactionForm from "@/components/TransactionForm";
 import { useInventoryData } from "@/lib/useInventoryData";
 
 export default function InwardPage() {
+  const { userRole } = useAuth();
+  const router = useRouter();
   const { data, loading, error, refresh } = useInventoryData();
 
-  let content;
+  useEffect(() => {
+    if (userRole && userRole === 'Basic User') {
+      router.push('/outward');
+    }
+  }, [userRole, router]);
 
   if (loading) {
-    content = <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
-  } else if (error || !data) {
-    content = <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
-  } else {
-    content = (
-      <div>
-        <h1 style={{ marginBottom: '2rem' }}>Inward Stock</h1>
-        <TransactionForm db={data} type="INWARD" refresh={refresh} />
-      </div>
-    );
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  return content;
+  if (error || !data) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  }
+
+  if (!userRole || userRole === 'Basic User') {
+    return null;
+  }
+
+  return (
+    <div>
+      <h1 style={{ marginBottom: '2rem' }}>Inward Stock</h1>
+      <TransactionForm db={data} type="INWARD" refresh={refresh} />
+    </div>
+  );
 }

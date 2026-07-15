@@ -22,15 +22,5 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     window.location.href = '/';
   }
 
-  if (response.status === 503 && typeof window !== 'undefined') {
-    try {
-      const clone = response.clone();
-      const json = await clone.json();
-      if (json.maintenance) {
-        window.location.href = `/maintenance?msg=${encodeURIComponent(json.message || '')}`;
-      }
-    } catch (e) {}
-  }
-
   return response;
 }

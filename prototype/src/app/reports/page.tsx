@@ -1,20 +1,33 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import ReportsClient from "./ReportsClient";
 import { useInventoryData } from "@/lib/useInventoryData";
 
 export default function ReportsPage() {
+  const { userRole } = useAuth();
+  const router = useRouter();
   const { data, loading, error } = useInventoryData();
 
-  let content;
+  useEffect(() => {
+    if (userRole && userRole === 'Basic User') {
+      router.push('/outward');
+    }
+  }, [userRole, router]);
 
   if (loading) {
-    content = <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
-  } else if (error || !data) {
-    content = <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
-  } else {
-    content = <ReportsClient initialData={data} />;
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  return content;
+  if (error || !data) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  }
+
+  if (!userRole || userRole === 'Basic User') {
+    return null;
+  }
+
+  return <ReportsClient initialData={data} />;
 }

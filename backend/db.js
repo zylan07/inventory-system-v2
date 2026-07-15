@@ -180,37 +180,9 @@ async function createTables() {
       const defaultSettings = [
         ['company_info', JSON.stringify({
           name: 'Pacco Stock',
-          address: '123 Pacco Road, Industrial Zone',
-          phone: '+1 555-0199',
-          email: 'info@pacco.com',
-          website: 'https://pacco.com',
-          gstNumber: '22AAAAA0000A1Z5',
           logoUrl: null,
-          footerText: 'Pacco Stock Inventory © 2026',
           versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
-        })],
-        ['security_settings', JSON.stringify({
-          minPasswordLength: 8,
-          sessionTimeout: 30,
-          maxLoginAttempts: 5,
-          enableGoogleLogin: true,
-          enableLocalLogin: true,
-          emailNotifications: true,
-          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
-        })],
-        ['notification_settings', JSON.stringify({
-          lowStockAlerts: true,
-          emailAlerts: true,
-          browserNotifications: true,
-          defaultThreshold: 10,
-          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
-        })],
-        ['maintenance_mode', JSON.stringify({
-          enabled: false,
-          message: 'System is currently under maintenance. Please try again later.',
-          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
-        })],
-        ['backup_history', JSON.stringify([])]
+        })]
       ];
 
       for (const [key, val] of defaultSettings) {
@@ -218,6 +190,9 @@ async function createTables() {
       }
       console.log('✅ Default settings prepopulated.');
     }
+
+    // Clean up deprecated settings keys
+    await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info')");
 
   } catch (error) {
     console.error('❌ Error creating tables:', error.message);

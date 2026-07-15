@@ -1,25 +1,38 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import AdjustmentClient from "./AdjustmentClient";
 import { useInventoryData } from "@/lib/useInventoryData";
 
 export default function AdjustmentPage() {
+  const { userRole } = useAuth();
+  const router = useRouter();
   const { data, loading, error, refresh } = useInventoryData();
 
-  let content;
+  useEffect(() => {
+    if (userRole && userRole !== 'Admin') {
+      router.push('/dashboard');
+    }
+  }, [userRole, router]);
 
   if (loading) {
-    content = <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
-  } else if (error || !data) {
-    content = <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
-  } else {
-    content = (
-      <div>
-        <h1 style={{ marginBottom: '2rem' }}>Physical Stock Adjustment</h1>
-        <AdjustmentClient db={data} refresh={refresh} />
-      </div>
-    );
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  return content;
+  if (error || !data) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  }
+
+  if (!userRole || userRole !== 'Admin') {
+    return null;
+  }
+
+  return (
+    <div>
+      <h1 style={{ marginBottom: '2rem' }}>Physical Stock Adjustment</h1>
+      <AdjustmentClient db={data} refresh={refresh} />
+    </div>
+  );
 }

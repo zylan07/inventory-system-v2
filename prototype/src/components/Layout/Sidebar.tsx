@@ -44,7 +44,6 @@ const NAV_GROUPS = {
   ],
   'Basic User': [
     { section: 'My Actions', items: [
-      { name: 'Dashboard', path: '/dashboard', icon: '🏠' },
       { name: 'Outward (Deduct)', path: '/outward', icon: '📤' },
     ]},
   ],
