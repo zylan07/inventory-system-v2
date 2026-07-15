@@ -2,6 +2,7 @@
 
 import { InventoryDb, Item } from "@/lib/db";
 import { useState, useMemo } from "react";
+import EmptyState from "@/components/EmptyState";
 
 const PAGE_SIZE = 50;
 
@@ -272,8 +273,19 @@ export default function StockClient({ initialData }: { initialData: InventoryDb 
 
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '3rem', color: 'var(--foreground-muted)' }}>
-                    No items found
+                  <td colSpan={12} style={{ padding: '2rem' }}>
+                    {initialData.items.length === 0 ? (
+                      <EmptyState type="stock" />
+                    ) : (
+                      <EmptyState 
+                        type="search" 
+                        onPrimaryAction={() => {
+                          setSearch("");
+                          setWarehouseFilter("");
+                          setPage(1);
+                        }} 
+                      />
+                    )}
                   </td>
                 </tr>
               )}

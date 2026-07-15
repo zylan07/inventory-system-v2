@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { InventoryDb, Item } from "@/lib/db";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
+import EmptyState from "@/components/EmptyState";
 import * as XLSX from "xlsx";
 
 type SortKey = "group" | "product" | "model" | "minStock" | "unit";
@@ -661,8 +662,24 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
                 ))}
                 {paginated.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "var(--foreground-muted)" }}>
-                      No products found.
+                    <td colSpan={6} style={{ padding: "2rem" }}>
+                      {initialData.items.length === 0 ? (
+                        <EmptyState 
+                          type="products" 
+                          onPrimaryAction={() => {
+                            const el = document.querySelector('input[placeholder*="Machinery"]') as HTMLInputElement;
+                            if (el) el.focus();
+                          }} 
+                        />
+                      ) : (
+                        <EmptyState 
+                          type="search" 
+                          onPrimaryAction={() => {
+                            setSearch("");
+                            setPage(1);
+                          }} 
+                        />
+                      )}
                     </td>
                   </tr>
                 )}

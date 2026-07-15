@@ -271,8 +271,36 @@ export default function Navbar() {
               {/* Body */}
               <div style={{ overflowY: 'auto' }}>
                 {displayNotifications.length === 0 ? (
-                  <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
-                    No notifications in this view
+                  <div style={{ 
+                    padding: '2.5rem 1rem', 
+                    textAlign: 'center', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '0.5rem' 
+                  }}>
+                    <div style={{ 
+                      width: '48px', 
+                      height: '48px', 
+                      borderRadius: '50%', 
+                      background: '#f1f5f9', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      color: '#94a3b8'
+                    }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
+                      All caught up!
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', maxWidth: '200px', lineHeight: 1.4 }}>
+                      No notifications in this view.
+                    </span>
                   </div>
                 ) : (
                   displayNotifications.map(n => (

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { InventoryDb, Transaction } from '@/lib/db';
 import { useAuth } from '@/components/AuthProvider';
+import EmptyState from '@/components/EmptyState';
 
 const PAGE_SIZE = 50;
 
@@ -353,7 +354,24 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
                     );
                   })}
                   {paginated.length === 0 && (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--foreground-muted)' }}>No records found</td></tr>
+                    <tr>
+                      <td colSpan={8} style={{ padding: '2rem' }}>
+                        {initialData.transactions.length === 0 ? (
+                          <EmptyState type="reports" />
+                        ) : (
+                          <EmptyState 
+                            type="filter" 
+                            onPrimaryAction={() => {
+                              setDateFrom("");
+                              setDateTo("");
+                              setTypeFilter("");
+                              setSearchModel("");
+                              setPage(1);
+                            }} 
+                          />
+                        )}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -447,7 +465,11 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
                     </tr>
                   ))}
                   {stockReport.length === 0 && (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: 'var(--foreground-muted)' }}>No data</td></tr>
+                    <tr>
+                      <td colSpan={7} style={{ padding: '2rem' }}>
+                        <EmptyState type="stock" />
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

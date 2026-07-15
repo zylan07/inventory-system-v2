@@ -5,6 +5,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/apiFetch';
 import Toast from '@/components/Toast';
+import EmptyState from '@/components/EmptyState';
 
 type User = {
   id: number;
@@ -204,7 +205,11 @@ export default function UsersPage() {
             {loading ? (
               <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>Loading users...</td></tr>
             ) : (users || []).length === 0 ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>No users found</td></tr>
+              <tr>
+                <td colSpan={5} style={{ padding: '2rem' }}>
+                  <EmptyState type="users" onPrimaryAction={openAddModal} />
+                </td>
+              </tr>
             ) : (
               (users || []).map(u => (
                 <tr key={u.id}>
