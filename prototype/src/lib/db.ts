@@ -10,6 +10,7 @@ export interface Item {
   model: string;
   description: string;
   minStock: number;
+  unit?: string;
   stock: Record<string, number>;
 }
 

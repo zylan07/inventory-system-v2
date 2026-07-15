@@ -81,6 +81,7 @@ async function createTables() {
         group_name VARCHAR(255) NOT NULL,
         product_name VARCHAR(255) NOT NULL,
         model_no VARCHAR(255) NOT NULL UNIQUE,
+        unit VARCHAR(255) DEFAULT 'pcs',
         description TEXT,
         min_stock INT DEFAULT 10,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

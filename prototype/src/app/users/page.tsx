@@ -31,6 +31,18 @@ export default function UsersPage() {
   const [role, setRole] = useState<'Admin' | 'Manager' | 'Basic User'>('Basic User');
   const [isActive, setIsActive] = useState(true);
 
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (showModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showModal]);
+
   const showToast = (message: string, type: 'success'|'error') => {
     setToast({ message, type, id: Date.now() });
   };
@@ -76,6 +88,22 @@ export default function UsersPage() {
     setRole(user.role);
     setIsActive(Boolean(user.is_active));
     setShowModal(true);
+  };
+
+  const handleResetEdit = () => {
+    if (editMode) {
+      setEmail(editMode.email);
+      setPassword('');
+      setRole(editMode.role);
+      setIsActive(Boolean(editMode.is_active));
+      showToast('Form fields reset to original values', 'success');
+    } else {
+      setEmail('');
+      setPassword('');
+      setRole('Basic User');
+      setIsActive(true);
+      showToast('Form fields cleared', 'success');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -217,30 +245,77 @@ export default function UsersPage() {
 
       {showModal && (
         <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
-            <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem' }}>
-              {editMode ? 'Edit User' : 'Add New User'}
-            </h2>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              
+          <form 
+            onSubmit={handleSubmit} 
+            className="modal-animate"
+            style={{ 
+              background: 'white',
+              borderRadius: '12px',
+              width: '95%',
+              maxWidth: '450px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '90vh',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '1.25rem 1.5rem', 
+              borderBottom: '1px solid var(--border)' 
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>
+                {editMode ? 'Edit User' : 'Add New User'}
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setShowModal(false)} 
+                style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--foreground-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ 
+              padding: '1.5rem', 
+              overflowY: 'auto', 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1.25rem' 
+            }}>
               <div>
-                <label style={labelStyle}>Email</label>
+                <label style={labelStyle}>Email Address</label>
                 <input 
                   type="email" 
                   required 
                   value={email} 
                   onChange={e => setEmail(e.target.value)}
                   disabled={!!editMode}
-                  style={inputStyle}
+                  style={!!editMode ? disabledInputStyle : inputStyle}
+                  placeholder="e.g. name@company.com"
                 />
+                {!!editMode && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '2px', display: 'block' }}>
+                    Email address cannot be edited once created.
+                  </span>
+                )}
               </div>
 
               <div>
-                <label style={labelStyle}>{editMode ? 'New Password (leave blank to keep current)' : 'Password'}</label>
+                <label style={labelStyle}>
+                  {editMode ? 'New Password (leave blank to keep current)' : 'Password'}
+                </label>
                 <input 
                   type="password" 
                   required={!editMode} 
                   value={password} 
+                  placeholder={editMode ? "••••••••" : "Enter account password"}
                   onChange={e => setPassword(e.target.value)}
                   style={inputStyle}
                 />
@@ -255,29 +330,120 @@ export default function UsersPage() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input 
-                  type="checkbox" 
-                  id="isActive" 
-                  checked={isActive} 
-                  onChange={e => setIsActive(e.target.checked)} 
-                />
-                <label htmlFor="isActive" style={{ fontWeight: 600, fontSize: '0.875rem' }}>Active Account</label>
+              <div>
+                <label style={labelStyle}>Account Status</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.25rem 0' }}>
+                  <label className="switch">
+                    <input 
+                      type="checkbox" 
+                      id="isActive"
+                      checked={isActive} 
+                      onChange={e => setIsActive(e.target.checked)} 
+                    />
+                    <span className="slider"></span>
+                  </label>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 500, color: isActive ? 'var(--success)' : 'var(--danger)' }}>
+                    {isActive ? 'Active (Authorized system access)' : 'Disabled (Suspended access)'}
+                  </span>
+                </div>
               </div>
+            </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button type="button" onClick={() => setShowModal(false)} style={{
-                  flex: 1, padding: '0.75rem', background: 'var(--secondary)', border: 'none', borderRadius: '6px', cursor: 'pointer'
-                }}>Cancel</button>
-                <button type="submit" style={{
-                  flex: 1, padding: '0.75rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer'
-                }}>{editMode ? 'Save Changes' : 'Create User'}</button>
-              </div>
-
-            </form>
-          </div>
+            {/* Modal Footer */}
+            <div style={{ 
+              padding: '1rem 1.5rem', 
+              borderTop: '1px solid var(--border)', 
+              background: 'var(--secondary)', 
+              display: 'flex', 
+              gap: '0.5rem',
+              justifyContent: 'flex-end'
+            }}>
+              <button 
+                type="button" 
+                onClick={handleResetEdit} 
+                className="btn-secondary"
+                style={{ padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 600 }}
+              >
+                Reset
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setShowModal(false)} 
+                className="btn-secondary"
+                style={{ padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary"
+                style={{ padding: '0.5rem 1rem', borderRadius: '6px' }}
+              >
+                {editMode ? 'Save Changes' : 'Create User'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
+
+      {/* Switch Toggle styles & opening animations */}
+      <style>{`
+        @keyframes modalFadeScale {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+        .modal-animate {
+          animation: modalFadeScale 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .switch {
+          position: relative;
+          display: inline-block;
+          width: 48px;
+          height: 24px;
+          flex-shrink: 0;
+        }
+        .switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background-color: #cbd5e1;
+          transition: 0.2s ease;
+          border-radius: 24px;
+        }
+        .slider:before {
+          position: absolute;
+          content: "";
+          height: 18px;
+          width: 18px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: 0.2s ease;
+          border-radius: 50%;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        input:checked + .slider {
+          background-color: var(--primary);
+        }
+        input:focus + .slider {
+          box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+        input:checked + .slider:before {
+          transform: translateX(24px);
+        }
+      `}</style>
     </div>
   );
 }
@@ -318,4 +484,12 @@ const labelStyle = {
 
 const inputStyle = {
   width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.95rem'
+};
+
+const disabledInputStyle = {
+  ...inputStyle,
+  background: 'var(--secondary)',
+  color: 'var(--foreground-muted)',
+  cursor: 'not-allowed',
+  borderColor: 'var(--border)',
 };

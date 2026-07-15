@@ -49,6 +49,7 @@ const txDataList = txJson.data || [];
         model: row.model_no,
         description: row.description || '',
         minStock: row.min_stock,
+        unit: row.unit || 'pcs',
         stock: row.stock || {},
       }));
 
