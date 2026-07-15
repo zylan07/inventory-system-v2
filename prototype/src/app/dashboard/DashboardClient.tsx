@@ -196,7 +196,12 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
 
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-kpi-card" 
+          onClick={() => router.push('/products')}
+          title="View Products Catalogue"
+          aria-label="View Products Catalogue"
+        >
           <div className="stat-label">Total SKUs</div>
           <div className="stat-value" style={{ color: 'var(--primary)' }}>{totalProducts}</div>
         </div>
@@ -204,11 +209,22 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
           <div className="stat-label">Warehouses</div>
           <div className="stat-value" style={{ color: 'var(--success)' }}>{totalWarehouses}</div>
         </div>
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-kpi-card" 
+          onClick={() => router.push('/reports')}
+          title="View Transaction Reports"
+          aria-label="View Transaction Reports"
+        >
           <div className="stat-label">Total Transactions</div>
           <div className="stat-value" style={{ color: 'var(--accent)' }}>{totalTransactions}</div>
         </div>
-        <div className="stat-card" style={{ borderColor: totalLowStockItems > 0 ? '#fecaca' : undefined }}>
+        <div 
+          className="stat-card clickable-kpi-card" 
+          style={{ borderColor: totalLowStockItems > 0 ? '#fecaca' : undefined }}
+          onClick={() => router.push('/stock')}
+          title="View Low Stock Items"
+          aria-label="View Low Stock Items"
+        >
           <div className="stat-label">Low Stock (&lt;10)</div>
           <div className="stat-value" style={{ color: 'var(--danger)' }}>{totalLowStockItems}</div>
         </div>
@@ -320,6 +336,20 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
           )}
         </div>
       </div>
+      <style>{`
+        .clickable-kpi-card {
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .clickable-kpi-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+          border-color: var(--primary);
+        }
+        .clickable-kpi-card:active {
+          transform: translateY(0);
+        }
+      `}</style>
     </div>
   );
 }
