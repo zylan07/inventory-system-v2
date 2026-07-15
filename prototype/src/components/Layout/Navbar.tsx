@@ -151,6 +151,18 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const isPathAllowed = (path: string, role: string | null) => {
+    if (!role) return false;
+    if (role === 'Admin') return true;
+    if (role === 'Manager') {
+      return ['/dashboard', '/inward', '/outward', '/transfer', '/stock', '/reports', '/profile'].includes(path);
+    }
+    if (role === 'Basic User') {
+      return ['/outward', '/profile'].includes(path);
+    }
+    return false;
+  };
+
   const handleReadAndNavigate = async (notif: Notification) => {
     if (!notif.is_read) {
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
@@ -163,7 +175,11 @@ export default function Navbar() {
     
     if (notif.redirect_path) {
       setShowDropdown(false);
-      router.push(notif.redirect_path);
+      if (isPathAllowed(notif.redirect_path, userRole)) {
+        router.push(notif.redirect_path);
+      } else {
+        alert('Not authorized to access this section.');
+      }
     }
   };
 

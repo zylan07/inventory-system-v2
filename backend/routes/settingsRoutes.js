@@ -311,6 +311,43 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
       throw new Error('Upload file is not a valid Inventory Backup package.');
     }
 
+    // Schema version checks
+    if (!backupPayload.metadata.schema_version || backupPayload.metadata.schema_version !== '1.2.0') {
+      throw new Error('Restore rejected: Unsupported database schema version.');
+    }
+
+    // Expected tables only checks
+    const expectedTables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings'];
+    const uploadedTables = Object.keys(backupPayload.data);
+    for (const tbl of uploadedTables) {
+      if (!expectedTables.includes(tbl)) {
+        throw new Error('Restore rejected: Unknown table in backup package: ' + tbl);
+      }
+    }
+
+    // Expected columns only checks
+    const validColumns = {
+      users: ['id', 'email', 'password', 'name', 'role', 'google_id', 'created_at'],
+      products: ['id', 'group_name', 'product_name', 'model_no', 'unit', 'description', 'min_stock', 'created_at'],
+      warehouses: ['id', 'name'],
+      stock: ['id', 'product_id', 'warehouse_id', 'quantity', 'alert_sent'],
+      transactions: ['id', 'type', 'product_id', 'quantity', 'warehouse_id', 'from_warehouse_id', 'to_warehouse_id', 'user_email', 'narration', 'created_at'],
+      system_settings: ['setting_key', 'setting_value', 'updated_at']
+    };
+
+    for (const tbl of uploadedTables) {
+      const rows = backupPayload.data[tbl];
+      if (!rows || !Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const keys = Object.keys(row);
+        for (const key of keys) {
+          if (!validColumns[tbl].includes(key)) {
+            throw new Error(`Restore rejected: Invalid column '${key}' in table '${tbl}'.`);
+          }
+        }
+      }
+    }
+
     // 2. Perform in-memory rollback snapshot
     for (const table of tables) {
       const [rows] = await pool.query(`SELECT * FROM ${table}`);
