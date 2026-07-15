@@ -4,8 +4,15 @@ const xlsx = require('xlsx');
 exports.getProducts = async (req, res) => {
   try {
     const pool = getPool();
-    const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
-    res.json({ success: true, message: 'Products fetched successfully', data: rows });
+    const userRole = req.user?.role;
+
+    if (userRole === 'Admin') {
+      const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+      res.json({ success: true, message: 'Products fetched successfully', data: rows });
+    } else {
+      const [rows] = await pool.query('SELECT id, product_name, model_no, unit FROM products ORDER BY model_no ASC');
+      res.json({ success: true, message: 'Products selectors fetched successfully', data: rows });
+    }
   } catch (err) {
     console.error('Error fetching products:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch products', data: null });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { InventoryDb, Transaction } from '@/lib/db';
 import { useAuth } from '@/components/AuthProvider';
 import EmptyState from '@/components/EmptyState';
@@ -21,6 +21,20 @@ const TYPE_BADGE: Record<string, string> = {
 export default function ReportsClient({ initialData }: { initialData: InventoryDb }) {
   const { userRole } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions');
+  const [companyName, setCompanyName] = useState('INVENTRA');
+
+  useEffect(() => {
+    const fetchBranding = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/auth/branding');
+        const json = await res.json();
+        if (json.success && json.data) {
+          setCompanyName(json.data.name || 'INVENTRA');
+        }
+      } catch (e) {}
+    };
+    fetchBranding();
+  }, []);
 
   // ── Transaction filters ──
   const [dateFrom, setDateFrom] = useState('');
@@ -147,7 +161,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
         tx.adjustmentReason || '', `"${tx.narration || tx.notes || ''}"`,
       ].join(',') + '\n';
     });
-    download(csv, 'text/csv', `inventra-transactions-${reportMonth}.csv`);
+    download(csv, 'text/csv', `${companyName.toLowerCase()}-transactions-${reportMonth}.csv`);
   };
 
   const handleExportStockCSV = () => {
@@ -155,7 +169,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
     stockReport.forEach(r => {
       csv += `"${r.group}","${r.product}","${r.model}",${r.opening},${r.inward},${r.outward},${r.closing}\n`;
     });
-    download(csv, 'text/csv', `inventra-stock-report-${reportMonth}.csv`);
+    download(csv, 'text/csv', `${companyName.toLowerCase()}-stock-report-${reportMonth}.csv`);
   };
 
   const handleExportExcel = async () => {
@@ -174,7 +188,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
-      XLSX.writeFile(wb, `inventra-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `${companyName.toLowerCase()}-report-${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch { alert('Excel export failed.'); }
   };
 
@@ -187,7 +201,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock Report');
-      XLSX.writeFile(wb, `inventra-stock-report-${reportMonth}.xlsx`);
+      XLSX.writeFile(wb, `${companyName.toLowerCase()}-stock-report-${reportMonth}.xlsx`);
     } catch { alert('Excel export failed.'); }
   };
 
@@ -197,7 +211,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       const autoTable = (await import('jspdf-autotable')).default;
       const doc = new jsPDF({ orientation: 'landscape' });
       doc.setFontSize(13);
-      doc.text('Inventra — Transaction Report', 14, 15);
+      doc.text(`${companyName} — Transaction Report`, 14, 15);
       doc.setFontSize(9);
       doc.text(`Generated: ${new Date().toLocaleString()} | Records: ${filteredTx.length}`, 14, 22);
       autoTable(doc, {
@@ -212,7 +226,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
         headStyles: { fillColor: [37, 99, 235] },
         alternateRowStyles: { fillColor: [248, 250, 252] },
       });
-      doc.save(`inventra-report-${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`${companyName.toLowerCase()}-report-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch { alert('PDF export failed.'); }
   };
 
@@ -222,7 +236,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       const autoTable = (await import('jspdf-autotable')).default;
       const doc = new jsPDF({ orientation: 'landscape' });
       doc.setFontSize(13);
-      doc.text(`Inventra — Stock Report (${reportMonth})`, 14, 15);
+      doc.text(`${companyName} — Stock Report (${reportMonth})`, 14, 15);
       doc.setFontSize(9);
       doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
       autoTable(doc, {
@@ -233,7 +247,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
         headStyles: { fillColor: [37, 99, 235] },
         alternateRowStyles: { fillColor: [248, 250, 252] },
       });
-      doc.save(`inventra-stock-report-${reportMonth}.pdf`);
+      doc.save(`${companyName.toLowerCase()}-stock-report-${reportMonth}.pdf`);
     } catch { alert('PDF export failed.'); }
   };
 

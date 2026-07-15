@@ -8,7 +8,7 @@ import Navbar from "@/components/Layout/Navbar";
 import InstallPrompt from "@/components/PWA/InstallPrompt";
 
 export const metadata: Metadata = {
-  title: "Inventra — Inventory Management",
+  title: "Inventory Management System",
   description: "Modern Inventory Management System",
   manifest: "/manifest.json",
   themeColor: "#2563eb",

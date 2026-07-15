@@ -113,7 +113,7 @@ export default function InstallPrompt() {
         </>
       ) : showPrompt ? (
         <>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>Install Inventra for a better experience</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>Install the application for a better experience</p>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
             <button 
               onClick={handleInstallClick}
