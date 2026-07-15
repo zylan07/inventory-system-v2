@@ -143,6 +143,82 @@ async function createTables() {
       )
     `);
 
+    // AUDIT LOGS TABLE
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        user_name VARCHAR(255) NULL,
+        user_email VARCHAR(255) NULL,
+        role VARCHAR(50) NULL,
+        module VARCHAR(255) NOT NULL,
+        action VARCHAR(255) NOT NULL,
+        reference_type VARCHAR(100) NULL,
+        reference_id VARCHAR(100) NULL,
+        old_value JSON NULL,
+        new_value JSON NULL,
+        description TEXT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'SUCCESS',
+        ip_address VARCHAR(45) NULL,
+        browser VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // SYSTEM SETTINGS TABLE
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value JSON NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Prepopulate settings if empty
+    const [settingsCount] = await conn.query('SELECT COUNT(*) as count FROM system_settings');
+    if (settingsCount[0].count === 0) {
+      const defaultSettings = [
+        ['company_info', JSON.stringify({
+          name: 'Pacco Stock',
+          address: '123 Pacco Road, Industrial Zone',
+          phone: '+1 555-0199',
+          email: 'info@pacco.com',
+          website: 'https://pacco.com',
+          gstNumber: '22AAAAA0000A1Z5',
+          logoUrl: null,
+          footerText: 'Pacco Stock Inventory © 2026',
+          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
+        })],
+        ['security_settings', JSON.stringify({
+          minPasswordLength: 8,
+          sessionTimeout: 30,
+          maxLoginAttempts: 5,
+          enableGoogleLogin: true,
+          enableLocalLogin: true,
+          emailNotifications: true,
+          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
+        })],
+        ['notification_settings', JSON.stringify({
+          lowStockAlerts: true,
+          emailAlerts: true,
+          browserNotifications: true,
+          defaultThreshold: 10,
+          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
+        })],
+        ['maintenance_mode', JSON.stringify({
+          enabled: false,
+          message: 'System is currently under maintenance. Please try again later.',
+          versionMetadata: { version: 1, updatedBy: 'System', updatedAt: new Date().toISOString() }
+        })],
+        ['backup_history', JSON.stringify([])]
+      ];
+
+      for (const [key, val] of defaultSettings) {
+        await conn.query('INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?)', [key, val]);
+      }
+      console.log('✅ Default settings prepopulated.');
+    }
+
   } catch (error) {
     console.error('❌ Error creating tables:', error.message);
     throw error;

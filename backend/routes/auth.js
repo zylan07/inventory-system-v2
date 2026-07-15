@@ -16,6 +16,8 @@ if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === 'placehold
 
 const googleClient = new OAuth2Client(backendClientId);
 
+const { logAction } = require('../utils/auditLogger');
+
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
@@ -27,18 +29,42 @@ router.post('/login', async (req, res) => {
     );
 
     if (rows.length === 0) {
+      await logAction({ headers: req.headers, socket: req.socket }, {
+        module: 'Authentication',
+        action: 'FAILED_LOGIN',
+        old_value: null,
+        new_value: { email },
+        description: `Failed login attempt: user with email ${email} not found.`,
+        status: 'FAILED'
+      });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = rows[0];
 
     if (!user.is_active) {
+      await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+        module: 'Authentication',
+        action: 'FAILED_LOGIN',
+        old_value: null,
+        new_value: { email },
+        description: `Failed login attempt: account is disabled for user ${email}.`,
+        status: 'FAILED'
+      });
       return res.status(401).json({ message: 'Account is disabled. Please contact the administrator.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
+      await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+        module: 'Authentication',
+        action: 'FAILED_LOGIN',
+        old_value: null,
+        new_value: { email },
+        description: `Failed login attempt: invalid password for user ${email}.`,
+        status: 'FAILED'
+      });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -47,6 +73,14 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET || 'secret123',
       { expiresIn: '1d' }
     );
+
+    await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+      module: 'Authentication',
+      action: 'LOGIN',
+      old_value: null,
+      new_value: { email },
+      description: `User ${user.email} successfully logged in using local authentication.`
+    });
 
     res.json({
       message: 'Login successful',
@@ -236,6 +270,14 @@ router.post('/google-login', async (req, res) => {
       
       if (!user.is_active) {
         console.warn(`⚠️ [Backend] User ${email} account is disabled.`);
+        await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+          module: 'Authentication',
+          action: 'FAILED_LOGIN',
+          old_value: null,
+          new_value: { email, type: 'GOOGLE' },
+          description: `Failed Google login attempt: user account ${email} is disabled.`,
+          status: 'FAILED'
+        });
         return res.status(401).json({ message: 'Account is disabled. Please contact the administrator.' });
       }
     } else {
@@ -250,6 +292,14 @@ router.post('/google-login', async (req, res) => {
       const [newRows] = await getPool().query('SELECT * FROM users WHERE id = ?', [insertId]);
       user = newRows[0];
       console.log(`🟢 [Backend] Account created successfully for ${email}.`);
+      
+      await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+        module: 'User Management',
+        action: 'CREATE_USER',
+        old_value: null,
+        new_value: { email, role: defaultRole },
+        description: `Provisioned new user account ${email} via Google Sign-In.`
+      });
     }
     
     const token = jwt.sign(
@@ -259,6 +309,15 @@ router.post('/google-login', async (req, res) => {
     );
 
     console.log("🟢 [Backend] Authentication flow completed successfully. Dispatching token.");
+    
+    await logAction({ headers: req.headers, socket: req.socket, user: { id: user.id, email: user.email, role: user.role } }, {
+      module: 'Authentication',
+      action: 'GOOGLE_LOGIN',
+      old_value: null,
+      new_value: { email },
+      description: `User ${user.email} successfully logged in using Google OAuth2.`
+    });
+
     res.json({
       message: 'Login successful',
       token,
@@ -273,12 +332,32 @@ router.post('/google-login', async (req, res) => {
   } catch (err) {
     console.error("🔴 [Backend] Global block Google Auth Error caught:");
     console.error(err);
-    // Send specific error message back to frontend so they don't get generic 500 error
     const msg = err.message ? err.message : 'Unknown authentication failure';
+    
+    await logAction({ headers: req.headers, socket: req.socket }, {
+      module: 'Authentication',
+      action: 'FAILED_LOGIN',
+      old_value: null,
+      new_value: { type: 'GOOGLE' },
+      description: `Failed Google login attempt: ${msg}`,
+      status: 'FAILED'
+    });
+
     if (msg.includes('invalid_client')) {
        return res.status(401).json({ message: 'Google Client ID verification failed (invalid_client).' });
     }
     res.status(500).json({ message: `Google authentication failed: ${msg}` });
+  }
+router.get('/branding', async (req, res) => {
+  try {
+    const [rows] = await getPool().query("SELECT setting_value FROM system_settings WHERE setting_key = 'company_info'");
+    if (rows.length > 0) {
+      const info = rows[0].setting_value;
+      return res.json({ success: true, data: { name: info.name, logoUrl: info.logoUrl } });
+    }
+    res.json({ success: true, data: { name: 'INVENTRA', logoUrl: null } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 

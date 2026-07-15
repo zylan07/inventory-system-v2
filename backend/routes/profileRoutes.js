@@ -6,6 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const { getPool } = require('../db');
 
+const { logAction } = require('../utils/auditLogger');
+
 // Multer memory storage configuration
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -57,7 +59,7 @@ router.put('/', upload.single('avatar'), async (req, res) => {
 
   try {
     // 1. Get current user profile details
-    const [rows] = await getPool().query('SELECT id, profile_image FROM users WHERE id = ?', [userId]);
+    const [rows] = await getPool().query('SELECT id, name, profile_image FROM users WHERE id = ?', [userId]);
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -117,6 +119,17 @@ router.put('/', upload.single('avatar'), async (req, res) => {
       [name, newProfileImageUrl, userId]
     );
 
+    // Write audit log
+    await logAction(req, {
+      module: 'Profile',
+      action: 'UPDATE_PROFILE',
+      reference_type: 'users',
+      reference_id: userId,
+      old_value: { name: user.name, profile_image: user.profile_image },
+      new_value: { name, profile_image: newProfileImageUrl },
+      description: `User updated account profile information.`
+    });
+
     res.json({
       success: true,
       message: 'Profile updated successfully',
@@ -148,6 +161,17 @@ router.delete('/avatar', async (req, res) => {
     }
 
     await getPool().query('UPDATE users SET profile_image = NULL WHERE id = ?', [userId]);
+
+    await logAction(req, {
+      module: 'Profile',
+      action: 'REMOVE_AVATAR',
+      reference_type: 'users',
+      reference_id: userId,
+      old_value: { profile_image: user.profile_image },
+      new_value: { profile_image: null },
+      description: 'User removed account avatar picture.'
+    });
+
     res.json({ success: true, message: 'Profile picture removed successfully' });
   } catch (err) {
     console.error(err);
@@ -185,6 +209,16 @@ const handlePasswordUpdate = async (req, res) => {
 
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
+      await logAction(req, {
+        module: 'Profile',
+        action: 'FAILED_PASSWORD_CHANGE',
+        reference_type: 'users',
+        reference_id: userId,
+        old_value: null,
+        new_value: null,
+        description: 'Failed password update: incorrect current credentials input.',
+        status: 'FAILED'
+      });
       return res.status(400).json({ success: false, message: 'Incorrect current password.' });
     }
 
@@ -192,6 +226,17 @@ const handlePasswordUpdate = async (req, res) => {
     const newHash = await bcrypt.hash(newPassword, salt);
 
     await getPool().query('UPDATE users SET password = ? WHERE id = ?', [newHash, userId]);
+
+    await logAction(req, {
+      module: 'Profile',
+      action: 'CHANGE_PASSWORD',
+      reference_type: 'users',
+      reference_id: userId,
+      old_value: null,
+      new_value: null,
+      description: 'Successfully updated security account password.'
+    });
+
     res.json({ success: true, message: 'Password changed successfully' });
 
   } catch (err) {

@@ -71,6 +71,74 @@ export default function Navbar() {
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('INVENTRA');
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+
+  useEffect(() => {
+    const fetchBranding = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/auth/branding');
+        const json = await res.json();
+        if (json.success && json.data) {
+          setLogoUrl(json.data.logoUrl || null);
+          setCompanyName(json.data.name || 'INVENTRA');
+        }
+      } catch (e) {}
+    };
+    fetchBranding();
+
+    const handleBrandingUpdate = () => {
+      fetchBranding();
+    };
+    window.addEventListener('branding-update', handleBrandingUpdate);
+    return () => window.removeEventListener('branding-update', handleBrandingUpdate);
+  }, []);
+
+  const fetchMaintenanceStatus = async () => {
+    if (userRole !== 'Admin') return;
+    try {
+      const res = await apiFetch('/settings');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data && json.data.maintenance_mode) {
+          setMaintenanceEnabled(json.data.maintenance_mode.enabled);
+        }
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchMaintenanceStatus();
+    const interval = setInterval(fetchMaintenanceStatus, 15000);
+    const handleBrandingUpdate = () => {
+      fetchMaintenanceStatus();
+    };
+    window.addEventListener('branding-update', handleBrandingUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('branding-update', handleBrandingUpdate);
+    };
+  }, [userRole]);
+
+  const handleDisableMaintenance = async () => {
+    try {
+      const res = await apiFetch('/settings/maintenance_mode', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: false,
+          message: 'System is currently under maintenance. Please try again later.'
+        })
+      });
+      if (res.ok) {
+        setMaintenanceEnabled(false);
+        window.dispatchEvent(new Event('branding-update'));
+      }
+    } catch (e) {
+      console.error('Failed to disable maintenance:', e);
+    }
+  };
+
   useEffect(() => {
     if (!userRole) return;
 
@@ -168,25 +236,67 @@ export default function Navbar() {
   });
 
   return (
-    <header style={{
-      height: '60px',
-      background: '#ffffff',
-      borderBottom: '1px solid var(--border)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '0 1.5rem',
-      position: 'sticky',
-      top: 0,
-      zIndex: 10,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-      flexShrink: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
-          {pageTitle}
+    <>
+      {maintenanceEnabled && userRole === 'Admin' && (
+        <div style={{
+          background: '#fef3c7',
+          borderBottom: '1px solid #fde68a',
+          color: '#92400e',
+          padding: '0.35rem 1.5rem',
+          fontSize: '0.8rem',
+          fontWeight: 700,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 1000,
+          fontFamily: 'Inter, sans-serif'
+        }}>
+          <span>⚠️ Maintenance Mode is currently enabled. System is locked for non-Admin users.</span>
+          <button 
+            type="button"
+            onClick={handleDisableMaintenance}
+            className="btn-secondary" 
+            style={{ 
+              padding: '0.15rem 0.5rem', 
+              fontSize: '0.725rem', 
+              background: '#ffffff', 
+              color: '#92400e', 
+              border: '1px solid #fde68a', 
+              cursor: 'pointer',
+              borderRadius: '4px',
+              fontWeight: 700
+            }}
+          >
+            Disable
+          </button>
         </div>
-      </div>
+      )}
+      <header style={{
+        height: '60px',
+        background: '#ffffff',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 1.5rem',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {userRole === 'Basic User' && logoUrl && (
+            <img 
+              src={`http://localhost:5000${logoUrl}`} 
+              alt="Branding Logo" 
+              style={{ height: '24px', width: 'auto', objectFit: 'contain', marginRight: '0.25rem' }} 
+            />
+          )}
+          <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
+            {userRole === 'Basic User' ? companyName : pageTitle}
+          </div>
+        </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         
@@ -510,5 +620,6 @@ export default function Navbar() {
         `}} />
       </div>
     </header>
+    </>
   );
 }

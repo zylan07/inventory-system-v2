@@ -12,6 +12,8 @@ exports.getProducts = async (req, res) => {
   }
 };
 
+const { logAction } = require('../utils/auditLogger');
+
 exports.createProduct = async (req, res) => {
   try {
     const { group_name, product_name, model_no, description, min_stock, unit } = req.body;
@@ -33,7 +35,19 @@ exports.createProduct = async (req, res) => {
       [group_name, product_name, model_no, unit || 'pcs', description || null, min_stock || 10]
     );
 
-    res.status(201).json({ success: true, message: 'Product created successfully', data: { id: result.insertId } });
+    const newId = result.insertId;
+
+    await logAction(req, {
+      module: 'Products',
+      action: 'CREATE_PRODUCT',
+      reference_type: 'products',
+      reference_id: newId,
+      old_value: null,
+      new_value: { group_name, product_name, model_no, unit, min_stock },
+      description: `Created new product ${product_name} (Model: ${model_no}).`
+    });
+
+    res.status(201).json({ success: true, message: 'Product created successfully', data: { id: newId } });
   } catch (err) {
     console.error('Error creating product:', err.message);
     res.status(500).json({ success: false, message: 'Failed to create product', data: null });
@@ -56,6 +70,7 @@ exports.updateProduct = async (req, res) => {
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Product not found', data: null });
     }
+    const oldProduct = existing[0];
 
     // Check if model number exists on another product
     const [duplicate] = await pool.query('SELECT id FROM products WHERE model_no = ? AND id != ?', [model_no, id]);
@@ -68,6 +83,31 @@ exports.updateProduct = async (req, res) => {
       'UPDATE products SET group_name = ?, product_name = ?, model_no = ?, unit = ?, description = ?, min_stock = ? WHERE id = ?',
       [group_name.trim(), product_name.trim(), model_no.trim().toUpperCase(), unit || 'pcs', description || null, min_stock || 10, id]
     );
+
+    // Write audit log
+    await logAction(req, {
+      module: 'Products',
+      action: 'PRODUCT_UPDATED',
+      reference_type: 'products',
+      reference_id: id,
+      old_value: {
+        group_name: oldProduct.group_name,
+        product_name: oldProduct.product_name,
+        model_no: oldProduct.model_no,
+        unit: oldProduct.unit,
+        description: oldProduct.description,
+        min_stock: oldProduct.min_stock
+      },
+      new_value: {
+        group_name: group_name.trim(),
+        product_name: product_name.trim(),
+        model_no: model_no.trim().toUpperCase(),
+        unit: unit || 'pcs',
+        description: description || null,
+        min_stock: min_stock || 10
+      },
+      description: `Updated product ${product_name} details.`
+    });
 
     res.json({ success: true, message: 'Product updated successfully', data: null });
   } catch (err) {
@@ -231,6 +271,15 @@ exports.importProducts = async (req, res) => {
       });
     }
 
+    await logAction(req, {
+      module: 'Products',
+      action: failed > 0 && imported === 0 ? 'EXCEL_IMPORT_FAILED' : 'EXCEL_IMPORT',
+      old_value: null,
+      new_value: { total, imported, skipped, failed },
+      description: `Excel product import completed. Processed: ${total}, Imported: ${imported}, Skipped: ${skipped}, Failed: ${failed}.`,
+      status: failed > 0 && imported === 0 ? 'FAILED' : 'SUCCESS'
+    });
+
     res.json({
       success: true,
       message: 'Excel processing completed successfully',
@@ -245,6 +294,14 @@ exports.importProducts = async (req, res) => {
 
   } catch (err) {
     console.error('Error importing products:', err.message);
+    await logAction(req, {
+      module: 'Products',
+      action: 'EXCEL_IMPORT_FAILED',
+      old_value: null,
+      new_value: null,
+      description: `Excel product import crashed: ${err.message}`,
+      status: 'FAILED'
+    });
     res.status(500).json({ success: false, message: 'Failed to process Excel file', error: err.message });
   } finally {
     conn.release();

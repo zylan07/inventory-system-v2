@@ -1,5 +1,6 @@
 const { getPool } = require('../db');
 const { sendMail } = require('../utils/mailer');
+const { logAction } = require('../utils/auditLogger');
 
 exports.getTransactions = async (req, res) => {
   try {
@@ -109,11 +110,46 @@ exports.createTransaction = async (req, res) => {
     }
 
     // Insert log
-    await conn.query(`
+    const [txnResult] = await conn.query(`
       INSERT INTO transactions 
         (type, product_id, quantity, warehouse_id, to_warehouse_id, user_email, narration) 
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [type, product_id, numericQuantity, warehouse_id, to_warehouse_id || null, userEmail, finalNarration || null]);
+
+    const txnId = txnResult.insertId;
+
+    // Fetch product name and model
+    const [pRows] = await conn.query('SELECT product_name, model_no FROM products WHERE id = ?', [product_id]);
+    const pName = pRows.length > 0 ? pRows[0].product_name : 'Unknown';
+    const pModel = pRows.length > 0 ? pRows[0].model_no : '';
+
+    // Fetch warehouse names
+    const [wRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [warehouse_id]);
+    const wName = wRows.length > 0 ? wRows[0].name : 'N/A';
+    
+    let toWName = '';
+    if (to_warehouse_id) {
+      const [twRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [to_warehouse_id]);
+      if (twRows.length > 0) toWName = twRows[0].name;
+    }
+
+    let actionLabel = type; // INWARD, OUTWARD, TRANSFER, ADJUSTMENT
+    let desc = `${type} transaction of ${numericQuantity} units for product ${pName} (${pModel}) at warehouse ${wName}.`;
+    if (type === 'TRANSFER') {
+      desc = `Stock Transfer of ${numericQuantity} units for product ${pName} (${pModel}) from ${wName} to ${toWName}.`;
+    } else if (type === 'ADJUSTMENT') {
+      desc = `Physical Stock Adjustment (${adjustmentType}) of ${numericQuantity} units for product ${pName} (${pModel}) at ${wName}.`;
+    }
+
+    await logAction(req, {
+      module: 'Stock',
+      action: actionLabel,
+      reference_type: 'transactions',
+      reference_id: txnId,
+      old_value: { currentStock },
+      new_value: { type, quantity: numericQuantity, adjustmentType, narration: finalNarration },
+      description: desc
+    });
 
     // Send Notification to Managers (With Grouping Logic)
     const notifPath = `/${type.toLowerCase()}`;

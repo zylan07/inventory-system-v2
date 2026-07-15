@@ -12,7 +12,10 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const profileRoutes = require('./routes/profileRoutes');
+const auditRoutes = require('./routes/auditRoutes');
+const settingsRoutes = require('./routes/settingsRoutes');
 const { authMiddleware } = require('./middleware/authMiddleware');
+const maintenanceMiddleware = require('./middleware/maintenanceMiddleware');
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -23,12 +26,14 @@ app.use('/auth', authRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Protected Routes
-app.use('/users', authMiddleware, userRoutes);
-app.use('/products', authMiddleware, productRoutes);
-app.use('/stock', authMiddleware, stockRoutes);
-app.use('/transactions', authMiddleware, transactionRoutes);
-app.use('/notifications', authMiddleware, notificationRoutes);
-app.use('/profile', authMiddleware, profileRoutes);
+app.use('/users', authMiddleware, maintenanceMiddleware, userRoutes);
+app.use('/products', authMiddleware, maintenanceMiddleware, productRoutes);
+app.use('/stock', authMiddleware, maintenanceMiddleware, stockRoutes);
+app.use('/transactions', authMiddleware, maintenanceMiddleware, transactionRoutes);
+app.use('/notifications', authMiddleware, maintenanceMiddleware, notificationRoutes);
+app.use('/profile', authMiddleware, maintenanceMiddleware, profileRoutes);
+app.use('/audit-logs', authMiddleware, maintenanceMiddleware, auditRoutes);
+app.use('/settings', authMiddleware, maintenanceMiddleware, settingsRoutes);
 
 const PORT = process.env.PORT || 5000;
 

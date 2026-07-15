@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../AuthProvider';
@@ -25,6 +26,10 @@ const NAV_GROUPS = {
       { name: 'Transactions', path: '/reports', icon: '📄' },
       { name: 'Adjustment', path: '/adjustment', icon: '⚖️' },
     ]},
+    { section: 'System Administration', items: [
+      { name: 'Audit Logs', path: '/audit-logs', icon: '📜' },
+      { name: 'Settings', path: '/settings', icon: '⚙️' },
+    ]},
   ],
   Manager: [
     { section: 'Operations', items: [
@@ -49,6 +54,28 @@ const NAV_GROUPS = {
 export default function Sidebar() {
   const { userRole } = useAuth();
   const pathname = usePathname();
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('INVENTRA');
+
+  useEffect(() => {
+    const fetchBranding = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/auth/branding');
+        const json = await res.json();
+        if (json.success && json.data) {
+          setLogoUrl(json.data.logoUrl || null);
+          setCompanyName(json.data.name || 'INVENTRA');
+        }
+      } catch (e) {}
+    };
+    fetchBranding();
+
+    const handleBrandingUpdate = () => {
+      fetchBranding();
+    };
+    window.addEventListener('branding-update', handleBrandingUpdate);
+    return () => window.removeEventListener('branding-update', handleBrandingUpdate);
+  }, []);
 
   if (!userRole || userRole === 'Basic User') return null;
 
@@ -67,11 +94,22 @@ export default function Sidebar() {
       flexShrink: 0,
     }}>
       {/* Logo */}
-      <div style={{ padding: '0.5rem 0.75rem', marginBottom: '1rem' }}>
-        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
-          📦 INVENTRA
+      <div style={{ padding: '0.5rem 0.75rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {logoUrl ? (
+            <img 
+              src={`http://localhost:5000${logoUrl}`} 
+              alt="Company Logo" 
+              style={{ height: '28px', width: 'auto', objectFit: 'contain', borderRadius: '4px' }} 
+            />
+          ) : (
+            <span style={{ fontSize: '1.2rem' }}>📦</span>
+          )}
+          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
+            {companyName}
+          </div>
         </div>
-        <div style={{ marginTop: '0.375rem' }}>
+        <div style={{ marginTop: '0.125rem' }}>
           <span className={`badge ${ROLE_BADGE[userRole] || ''}`} style={{ fontSize: '0.65rem' }}>
             {userRole}
           </span>
