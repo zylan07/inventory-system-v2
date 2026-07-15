@@ -143,7 +143,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
         d.toLocaleDateString(), d.toLocaleTimeString(), tx.type,
         `"${modelNumber}"`, `"${item?.product || ''}"`, `"${item?.group || ''}"`,
         `"${fromWh}"`, `"${toWh}"`, tx.quantity, tx.user,
-        tx.adjustmentReason || '', `"${tx.notes || ''}"`,
+        tx.adjustmentReason || '', `"${tx.narration || tx.notes || ''}"`,
       ].join(',') + '\n';
     });
     download(csv, 'text/csv', `inventra-transactions-${reportMonth}.csv`);
@@ -167,7 +167,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
           Date: d.toLocaleDateString(), Time: d.toLocaleTimeString(), Type: tx.type,
           'Model Number': modelNumber, Product: item?.product || '', Group: item?.group || '',
           'From Warehouse': fromWh, 'To Warehouse': toWh, Quantity: tx.quantity,
-          User: tx.user, Reason: tx.adjustmentReason || '', Notes: tx.notes || '',
+          User: tx.user, Reason: tx.adjustmentReason || '', Notes: tx.narration || tx.notes || '',
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
@@ -347,7 +347,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
                         <td style={{ fontWeight: 700 }}>{tx.quantity}</td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--foreground-muted)' }}>{tx.user}</td>
                         <td style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {tx.notes || tx.adjustmentReason || '—'}
+                          {tx.narration || tx.notes || tx.adjustmentReason || '—'}
                         </td>
                       </tr>
                     );

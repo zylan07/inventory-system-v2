@@ -34,3 +34,6 @@ export interface InventoryDb {
   items: Item[];
   transactions: Transaction[];
 }
+
+export type UserRole = 'Admin' | 'Manager' | 'Basic User';
+

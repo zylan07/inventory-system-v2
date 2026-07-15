@@ -52,9 +52,13 @@ async function createTables() {
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         email VARCHAR(255) NOT NULL UNIQUE,
-        password VARCHAR(255) NOT NULL,
+        password VARCHAR(255) NULL,
+        name VARCHAR(255) NULL,
+        google_id VARCHAR(255) UNIQUE NULL,
+        profile_image VARCHAR(255) NULL,
         role ENUM('Admin', 'Manager', 'Basic User') NOT NULL DEFAULT 'Basic User',
         is_active BOOLEAN DEFAULT TRUE,
+        is_verified BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -111,6 +115,7 @@ async function createTables() {
         product_id INT NOT NULL,
         warehouse_id VARCHAR(50) NOT NULL,
         quantity INT NOT NULL DEFAULT 0,
+        alert_sent BOOLEAN DEFAULT FALSE,
         UNIQUE KEY unique_stock (product_id, warehouse_id),
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE
@@ -127,6 +132,7 @@ async function createTables() {
         warehouse_id VARCHAR(50) NOT NULL,
         from_warehouse_id VARCHAR(50) DEFAULT NULL,
         to_warehouse_id VARCHAR(50) DEFAULT NULL,
+        user_email VARCHAR(255) DEFAULT NULL,
         narration TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,

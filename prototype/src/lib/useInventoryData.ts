@@ -17,11 +17,27 @@ export function useInventoryData() {
       ]);
 
       if (!stockRes.ok || !txRes.ok) {
+        if (stockRes.status === 401 || txRes.status === 401) {
+          setData({ warehouses: [], items: [], transactions: [] });
+          setLoading(false);
+          return;
+        }
+
+        console.error("Stock response status:", stockRes.status, "OK:", stockRes.ok);
+        console.error("Tx response status:", txRes.status, "OK:", txRes.ok);
+        try {
+          const stockErr = await stockRes.clone().text();
+          console.error("Stock error body:", stockErr);
+        } catch(e){}
+        try {
+          const txErr = await txRes.clone().text();
+          console.error("Tx error body:", txErr);
+        } catch(e){}
         throw new Error('Failed to fetch data from backend API');
       }
 
       const stockJson = await stockRes.json();
-const txJson = await txRes.json();
+      const txJson = await txRes.json();
 
 const stockData = stockJson.data || [];
 const txDataList = txJson.data || [];
@@ -51,7 +67,7 @@ const txDataList = txJson.data || [];
           warehouseId: row.warehouse_id,
           toWarehouseId: row.to_warehouse_id || undefined,
           quantity: row.quantity,
-          user: 'System', // Hardcoded for this prototype
+          user: row.user_email || 'System', // Uses fetched user email
           narration: row.narration || undefined,
           adjustmentType: adjType,
         };

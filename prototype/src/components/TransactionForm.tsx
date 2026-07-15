@@ -53,10 +53,15 @@ export default function TransactionForm({ db, type, refresh }: { db: InventoryDb
         narration: type === 'OUTWARD' ? narration.trim() : undefined,
       };
 
-      await apiFetch('/transactions', {
-  method: 'POST',
-  body: JSON.stringify(payload),
-});
+      const res = await apiFetch('/transactions', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Transaction failed');
+      }
 
 console.log("TOAST TRIGGERED");
 

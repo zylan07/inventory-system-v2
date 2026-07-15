@@ -36,8 +36,6 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
     if (userRole === 'Basic User') router.push('/outward');
   }, [userRole, router]);
 
-  if (!userRole || userRole === 'Basic User') return null;
-
   // ── Warehouse totals ──
   const warehouseStocks = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -69,7 +67,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
 
   const moversData = useMemo(() => {
     const items = initialData.items
-      .map(item => ({ id: item.id, model: item.model.trim(), outward: itemOutwardMap[item.id] || 0 }))
+      .map(item => ({ id: item.id, model: item.model.trim(), product: item.product, group: item.group, outward: itemOutwardMap[item.id] || 0 }))
       .filter(i => i.outward > 0)
       .sort((a, b) => b.outward - a.outward);
 
@@ -168,7 +166,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
   const VelocityList = ({
     items, label, color, badgeClass,
   }: {
-    items: { id: string; model: string; outward: number }[];
+    items: { id: string; model: string; product?: string; group?: string; outward: number }[];
     label: string; color: string; badgeClass: string;
   }) => (
     <div className="stat-card">
@@ -179,7 +177,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {items.slice(0, 5).map(item => (
             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.78rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.model}>
+              <span style={{ fontSize: '0.78rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${item.product || ''} | ${item.group || ''} | ${item.model}`}>
                 {item.model}
               </span>
               <span className={`badge ${badgeClass}`}>{item.outward}</span>
@@ -189,6 +187,8 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
       )}
     </div>
   );
+
+  if (!userRole || userRole === 'Basic User') return null;
 
   return (
     <div>

@@ -39,6 +39,9 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const res = await apiFetch('/users');
+      if (!res.ok) {
+        throw new Error('Failed to load users');
+      }
       const data = await res.json();
       const userArray = Array.isArray(data) ? data : (data.data || []);
       setUsers(userArray);
@@ -83,10 +86,14 @@ export default function UsersPage() {
         const body: Record<string, any> = { role, is_active: isActive };
         if (password) body.password = password; // only send if changed
 
-        await apiFetch(`/users/${editMode.id}`, {
+        const res = await apiFetch(`/users/${editMode.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Failed to update user');
+        }
         showToast('User updated successfully', 'success');
       } else {
         // Create user
@@ -94,10 +101,14 @@ export default function UsersPage() {
           showToast('Please fill all fields', 'error');
           return;
         }
-        await apiFetch('/users', {
+        const res = await apiFetch('/users', {
           method: 'POST',
           body: JSON.stringify({ email, password, role, is_active: isActive }),
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Failed to create user');
+        }
         showToast('User created successfully', 'success');
       }
       setShowModal(false);
@@ -111,7 +122,11 @@ export default function UsersPage() {
     if (!confirm(`Are you sure you want to delete user ${user.email}?`)) return;
     
     try {
-      await apiFetch(`/users/${user.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/users/${user.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete user');
+      }
       showToast('User deleted successfully', 'success');
       fetchUsers();
     } catch (err: any) {

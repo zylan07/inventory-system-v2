@@ -66,7 +66,7 @@ export default function AdjustmentClient({ db, refresh }: { db: InventoryDb; ref
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to process adjustment');
+        throw new Error(data.message || data.error || 'Failed to process adjustment');
       }
 
       if (refresh) refresh();

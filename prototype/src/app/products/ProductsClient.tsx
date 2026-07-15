@@ -42,7 +42,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to add product');
+        throw new Error(data.message || data.error || 'Failed to add product');
       }
 
       showToast("Product added successfully", "success");
