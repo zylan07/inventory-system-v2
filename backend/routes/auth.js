@@ -348,6 +348,8 @@ router.post('/google-login', async (req, res) => {
     }
     res.status(500).json({ message: `Google authentication failed: ${msg}` });
   }
+});
+
 router.get('/branding', async (req, res) => {
   try {
     const [rows] = await getPool().query("SELECT setting_value FROM system_settings WHERE setting_key = 'company_info'");

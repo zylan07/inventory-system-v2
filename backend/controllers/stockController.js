@@ -1,6 +1,11 @@
 const { getPool } = require('../db');
 
 exports.getStock = async (req, res) => {
+  const userRole = req.user?.role;
+  if (userRole === 'Basic User') {
+    return res.status(403).json({ success: false, message: 'Forbidden: Basic Users are not authorized to view stock levels.' });
+  }
+
   try {
     const pool = getPool();
     // Get all products
@@ -34,6 +39,11 @@ exports.getStock = async (req, res) => {
 };
 
 exports.getStockByModelNo = async (req, res) => {
+  const userRole = req.user?.role;
+  if (userRole === 'Basic User') {
+    return res.status(403).json({ success: false, message: 'Forbidden: Basic Users are not authorized to view stock levels.' });
+  }
+
   try {
     const { modelNo } = req.params;
     const pool = getPool();
