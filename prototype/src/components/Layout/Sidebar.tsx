@@ -27,7 +27,6 @@ const NAV_GROUPS = {
       { name: 'Adjustment', path: '/adjustment', icon: '⚖️' },
     ]},
     { section: 'System Administration', items: [
-      { name: 'Audit Logs', path: '/audit-logs', icon: '📜' },
       { name: 'Settings', path: '/settings', icon: '⚙️' },
     ]},
   ],

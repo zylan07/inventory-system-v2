@@ -12,7 +12,6 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const profileRoutes = require('./routes/profileRoutes');
-const auditRoutes = require('./routes/auditRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const { authMiddleware } = require('./middleware/authMiddleware');
 const maintenanceMiddleware = require('./middleware/maintenanceMiddleware');
@@ -32,7 +31,6 @@ app.use('/stock', authMiddleware, maintenanceMiddleware, stockRoutes);
 app.use('/transactions', authMiddleware, maintenanceMiddleware, transactionRoutes);
 app.use('/notifications', authMiddleware, maintenanceMiddleware, notificationRoutes);
 app.use('/profile', authMiddleware, maintenanceMiddleware, profileRoutes);
-app.use('/audit-logs', authMiddleware, maintenanceMiddleware, auditRoutes);
 app.use('/settings', authMiddleware, maintenanceMiddleware, settingsRoutes);
 
 const PORT = process.env.PORT || 5000;

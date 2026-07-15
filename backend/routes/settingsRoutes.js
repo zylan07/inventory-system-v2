@@ -173,7 +173,11 @@ router.post('/logo', requireAdmin, upload.single('logo'), async (req, res) => {
 
     // Save new file with unique timestamp filename to bust caches
     const timestamp = Date.now();
-    const ext = path.extname(req.file.originalname).toLowerCase() || '.png';
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const allowedExts = ['.png', '.jpeg', '.jpg', '.webp'];
+    if (!allowedExts.includes(ext)) {
+      return res.status(400).json({ success: false, message: 'Only PNG, JPEG, and WEBP logo images are allowed.' });
+    }
     const newFilename = `logo_${timestamp}${ext}`;
     const savePath = path.join(brandingDir, newFilename);
     fs.writeFileSync(savePath, req.file.buffer);
@@ -367,7 +371,8 @@ router.get('/backup-history', requireAdmin, async (req, res) => {
 // DELETE /settings/backup/:filename - Permanently delete backup file
 router.delete('/backup/:filename', requireAdmin, async (req, res) => {
   const { filename } = req.params;
-  const filePath = path.join('./uploads', 'backups', filename);
+  const safeFilename = path.basename(filename);
+  const filePath = path.join('./uploads', 'backups', safeFilename);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ success: false, message: 'Backup file not found' });
@@ -380,10 +385,10 @@ router.delete('/backup/:filename', requireAdmin, async (req, res) => {
       module: 'Settings',
       action: 'DELETE_BACKUP',
       reference_type: 'backup_file',
-      reference_id: filename,
-      old_value: { filename },
+      reference_id: safeFilename,
+      old_value: { filename: safeFilename },
       new_value: null,
-      description: `Permanently deleted backup file ${filename}`
+      description: `Permanently deleted backup file ${safeFilename}`
     });
 
     res.json({ success: true, message: 'Backup deleted successfully' });
@@ -396,7 +401,8 @@ router.delete('/backup/:filename', requireAdmin, async (req, res) => {
 // GET /settings/backup/download/:filename - Download local backup
 router.get('/backup/download/:filename', requireAdmin, (req, res) => {
   const { filename } = req.params;
-  const filePath = path.resolve('./uploads/backups', filename);
+  const safeFilename = path.basename(filename);
+  const filePath = path.resolve('./uploads/backups', safeFilename);
   if (fs.existsSync(filePath)) {
     res.download(filePath);
   } else {
@@ -453,6 +459,11 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
 
         for (const row of rows) {
           const keys = Object.keys(row);
+          for (const key of keys) {
+            if (!/^[a-zA-Z0-9_]+$/.test(key)) {
+              throw new Error('Invalid column name: ' + key);
+            }
+          }
           const values = Object.values(row);
           const placeholders = keys.map(() => '?').join(', ');
           await pool.query(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`, values);
@@ -469,6 +480,11 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
         if (!rows || rows.length === 0) continue;
         for (const row of rows) {
           const keys = Object.keys(row);
+          for (const key of keys) {
+            if (!/^[a-zA-Z0-9_]+$/.test(key)) {
+              throw new Error('Invalid column name: ' + key);
+            }
+          }
           const values = Object.values(row);
           const placeholders = keys.map(() => '?').join(', ');
           await pool.query(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`, values);
