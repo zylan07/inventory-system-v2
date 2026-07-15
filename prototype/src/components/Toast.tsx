@@ -21,6 +21,7 @@ export default function Toast({
 
   return (
     <div
+      className="app-toast"
       style={{
         position: "fixed",
         top: "20px",

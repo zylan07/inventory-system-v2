@@ -54,6 +54,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('INVENTRA');
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     const fetchBranding = async () => {
@@ -72,25 +73,51 @@ export default function Sidebar() {
       fetchBranding();
     };
     window.addEventListener('branding-update', handleBrandingUpdate);
-    return () => window.removeEventListener('branding-update', handleBrandingUpdate);
+
+    // Responsive events
+    const handleToggle = () => setIsOpen(prev => !prev);
+    const handleClose = () => setIsOpen(false);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    
+    window.addEventListener('toggle-sidebar', handleToggle);
+    window.addEventListener('close-sidebar', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('popstate', handleClose);
+
+    return () => {
+      window.removeEventListener('branding-update', handleBrandingUpdate);
+      window.removeEventListener('toggle-sidebar', handleToggle);
+      window.removeEventListener('close-sidebar', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('popstate', handleClose);
+    };
   }, []);
+
+  // Body scroll lock effect
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   if (!userRole || userRole === 'Basic User') return null;
 
   const navGroups = NAV_GROUPS[userRole];
 
   return (
-    <aside style={{
-      width: '240px',
-      background: 'var(--sidebar-bg)',
-      borderRight: '1px solid rgba(255,255,255,0.05)',
-      padding: '1.25rem 0.75rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.25rem',
-      overflowY: 'auto',
-      flexShrink: 0,
-    }}>
+    <>
+      <div 
+        className={`sidebar-overlay ${isOpen ? 'active' : ''}`}
+        onClick={() => setIsOpen(false)}
+      />
+      <aside className={`app-sidebar ${isOpen ? 'open' : ''}`}>
       {/* Logo */}
       <div style={{ padding: '0.5rem 0.75rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -151,6 +178,7 @@ export default function Sidebar() {
               onMouseLeave={e => {
                 if (!isActive) (e.currentTarget as HTMLAnchorElement).style.background = 'transparent';
               }}
+              onClick={() => setIsOpen(false)}
               >
                 <span style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon}</span>
                 {item.name}
@@ -160,5 +188,6 @@ export default function Sidebar() {
         </div>
       ))}
     </aside>
+    </>
   );
 }

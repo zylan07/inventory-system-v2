@@ -32,16 +32,11 @@ export default function RootLayout({
         <GoogleOAuthProvider clientId={clientId}>
           <AuthProvider>
             <ToastProvider>
-              <div style={{ display: 'flex', width: '100%', height: '100vh', overflow: 'hidden' }}>
+              <div className="layout-wrapper">
               <Sidebar />
-              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minWidth: 0 }}>
+              <div className="content-wrapper">
                 <Navbar />
-                <main style={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  padding: '1.5rem',
-                  background: 'var(--background)',
-                }}>
+                <main className="main-content">
                   {children}
                 </main>
               </div>

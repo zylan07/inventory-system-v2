@@ -280,7 +280,7 @@ export default function ProfileClient({ initialProfile, refresh }: { initialProf
 
           <form onSubmit={handleSaveProfile}>
             {/* Profile Picture Uploader Row */}
-            <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+            <div className="profile-avatar-row" style={{ display: "flex", alignItems: "center", gap: "1.5rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
               <div style={{
                 width: "96px",
                 height: "96px",

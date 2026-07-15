@@ -621,8 +621,298 @@ td {
 .btn-action-delete:active {
   transform: translateY(0);
 }
+
+/* Phase 1 Layout Framework Styles */
+.layout-wrapper {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  background: var(--background);
+}
+
+/* Sidebar styling wrapper */
+.app-sidebar {
+  width: 240px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid rgba(255,255,255,0.05);
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+  flex-shrink: 0;
+  z-index: 100;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar overlay backdrop overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(1.5px);
+  z-index: 99;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+  pointer-events: none;
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Toggler hamburger defaults */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  color: var(--foreground);
+  font-size: 1.5rem;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+  width: 44px;
+  height: 44px;
+}
+.hamburger-btn:hover {
+  background-color: var(--secondary);
+}
+
+.mobile-navbar-left {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    transform: translateX(-100%);
+  }
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    display: block;
+  }
+  .hamburger-btn {
+    display: flex;
+  }
+  .desktop-navbar-left {
+    display: none !important;
+  }
+  .mobile-navbar-left {
+    display: flex !important;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .main-content {
+    padding: 1rem;
+  }
+}
+
 .btn-action-delete:focus {
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
   outline: none;
 }
+
+/* Phase 2 Responsive Overrides */
+@media (max-width: 1023px) {
+  /* Grids & Cards */
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Tables horizontally scrollable */
+  .table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    margin-bottom: 1rem;
+  }
+  .table-wrapper table {
+    min-width: 800px !important;
+  }
+
+  /* Modals on tablet */
+  .modal-form,
+  .modal-animate {
+    width: 90% !important;
+    max-width: 90% !important;
+    max-height: 90vh !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3) !important;
+  }
+  
+  /* Shared Forms & Inputs */
+  .form-row {
+    flex-wrap: wrap !important;
+    gap: 1rem !important;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Grids Stacked on Mobile */
+  .grid-cols-4,
+  .grid-cols-3,
+  .grid-cols-2 {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  
+  /* Stack recent logs vertically */
+  .recent-activity-container {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  
+  /* Stack filters wrapping */
+  .filter-container {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+  .filter-container select,
+  .filter-container input,
+  .filter-container button {
+    width: 100% !important;
+  }
+
+  /* Shared Modals on Mobile */
+  .modal-form,
+  .modal-animate {
+    width: 95% !important;
+    max-width: 95% !important;
+    max-height: 90vh !important;
+    border-radius: 12px !important;
+  }
+  
+  /* Shared Forms & Input Stack */
+  .form-group {
+    flex: 1 1 100% !important;
+    min-width: 100% !important;
+    margin-bottom: 0.5rem;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea,
+  input, select, textarea {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Buttons on mobile */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-excel-import,
+  .btn-excel-export {
+    width: 100% !important;
+    min-height: 44px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  
+  /* Touch target sizes (>= 44px) */
+  button,
+  select,
+  input,
+  a {
+    min-height: 44px;
+  }
+  
+  /* Action buttons inside tables should remain smaller touch targets inside table scroll wrapper to avoid table row sizing issues */
+  .table-wrapper button,
+  .table-wrapper a {
+    min-height: 32px;
+  }
+
+  /* Toasts responsive overrides */
+  .app-toast {
+    width: 90% !important;
+    left: 5% !important;
+    transform: none !important;
+    box-sizing: border-box;
+  }
+
+  /* Reports Filter & Button stack rules */
+  .filter-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .filter-card > div,
+  .filter-card input,
+  .filter-card select {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  
+  .export-btn-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    gap: 0.5rem !important;
+  }
+  .export-btn-bar button {
+    width: 100% !important;
+  }
+
+  /* Excel Button Container Stacking */
+  .excel-btn-container {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  
+  /* Center profile avatar row on mobile */
+  .profile-avatar-row {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  /* Center and constrain login card container */
+  .login-card-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 1rem !important;
+  }
+}
+
 

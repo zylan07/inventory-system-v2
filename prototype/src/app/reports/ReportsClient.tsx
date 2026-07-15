@@ -288,7 +288,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       {activeTab === 'transactions' && (
         <>
           {/* Filters */}
-          <div className="card mb-4" style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="card mb-4 filter-card" style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ flex: 1, minWidth: '150px' }}>
               <label className="form-label mb-1">Search Model</label>
               <input type="text" placeholder="Model number..." value={searchModel}
@@ -320,7 +320,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
           </div>
 
           {/* Export buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
+          <div className="export-btn-bar" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', flex: 1 }}>{filteredTx.length} records</span>
             <button onClick={handleExportPDF} className="btn-secondary">📄 PDF</button>
             <button onClick={handleExportCSV} className="btn-secondary">📊 CSV</button>
@@ -416,12 +416,12 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       {/* ─────────────── STOCK REPORT TAB ─────────────── */}
       {activeTab === 'stock-report' && (
         <>
-          <div className="card mb-4" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="card mb-4 filter-card" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div>
               <label className="form-label mb-1">Month</label>
               <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} style={{ width: 'auto' }} />
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div className="export-btn-bar" style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <button onClick={handleExportStockPDF} className="btn-secondary">📄 PDF</button>
               <button onClick={handleExportStockCSV} className="btn-secondary">📊 CSV</button>
               {userRole === 'Admin' && (

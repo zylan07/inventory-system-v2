@@ -214,7 +214,7 @@ export default function LoginPage() {
           onClose={() => setToast(null)} 
         />
       )}
-      <div style={{ width: '100%', maxWidth: '400px' }}>
+      <div className="login-card-container" style={{ width: '100%', maxWidth: '400px' }}>
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
           {logoUrl ? (
             <img 

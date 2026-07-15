@@ -222,15 +222,46 @@ export default function Navbar() {
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {userRole === 'Basic User' && logoUrl && (
-            <img 
-              src={`http://localhost:5000${logoUrl}`} 
-              alt="Branding Logo" 
-              style={{ height: '24px', width: 'auto', objectFit: 'contain', marginRight: '0.25rem' }} 
-            />
+          {/* Hamburger (only if not Basic User) */}
+          {userRole !== 'Basic User' && (
+            <button 
+              className="hamburger-btn"
+              onClick={() => window.dispatchEvent(new Event('toggle-sidebar'))}
+              aria-label="Toggle Navigation Sidebar"
+              title="Toggle Navigation Sidebar"
+            >
+              ☰
+            </button>
           )}
-          <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
-            {userRole === 'Basic User' ? companyName : pageTitle}
+
+          {/* Desktop display for page title/branding */}
+          <div className="desktop-navbar-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {userRole === 'Basic User' && logoUrl && (
+              <img 
+                src={`http://localhost:5000${logoUrl}`} 
+                alt="Branding Logo" 
+                style={{ height: '24px', width: 'auto', objectFit: 'contain', marginRight: '0.25rem' }} 
+              />
+            )}
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
+              {userRole === 'Basic User' ? companyName : pageTitle}
+            </div>
+          </div>
+
+          {/* Mobile display for branding (always logo + company name) */}
+          <div className="mobile-navbar-left" style={{ display: 'none', alignItems: 'center', gap: '0.5rem' }}>
+            {logoUrl ? (
+              <img 
+                src={`http://localhost:5000${logoUrl}`} 
+                alt="Logo" 
+                style={{ height: '24px', width: 'auto', objectFit: 'contain' }}
+              />
+            ) : (
+              <span style={{ fontSize: '1.2rem' }}>📦</span>
+            )}
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)', textTransform: 'uppercase' }}>
+              {companyName}
+            </div>
           </div>
         </div>
 

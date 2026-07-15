@@ -995,6 +995,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
         <div style={modalOverlayStyle}>
           <form 
             onSubmit={handleEditSubmit} 
+            className="modal-form"
             style={{ 
               background: 'white',
               borderRadius: '12px',
