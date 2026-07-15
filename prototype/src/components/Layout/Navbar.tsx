@@ -66,6 +66,11 @@ export default function Navbar() {
   const [activeTab, setActiveTab] = useState<'All' | 'Alerts' | 'Transactions'>('All');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const [profileName, setProfileName] = useState('');
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+  const accountDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!userRole) return;
 
@@ -90,9 +95,33 @@ export default function Navbar() {
   }, [userRole]);
 
   useEffect(() => {
+    if (!userRole) return;
+    const fetchProfile = async () => {
+      try {
+        const res = await apiFetch('/profile');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            setProfileName(data.data.name || data.data.email || 'User');
+            setProfileImage(data.data.profile_image);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile in navbar', err);
+      }
+    };
+    fetchProfile();
+    window.addEventListener('focus', fetchProfile);
+    return () => window.removeEventListener('focus', fetchProfile);
+  }, [userRole]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+      }
+      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target as Node)) {
+        setShowAccountDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -369,25 +398,108 @@ export default function Navbar() {
           </span>
         </div>
 
-        {/* Logout */}
-        <button
-          onClick={() => { logout(); router.push('/'); }}
-          style={{
-            background: 'var(--secondary)',
-            color: 'var(--foreground)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            padding: '0.375rem 0.875rem',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'var(--transition)',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--secondary-hover)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'var(--secondary)')}
-        >
-          Logout
-        </button>
+        {/* User Account Menu Dropdown */}
+        <div ref={accountDropdownRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowAccountDropdown(!showAccountDropdown)}
+            style={{
+              background: 'white',
+              color: 'var(--foreground)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              padding: '0.375rem 0.75rem',
+              fontSize: '0.825rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              transition: 'var(--transition)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--secondary)')}
+            onMouseLeave={e => { if (!showAccountDropdown) e.currentTarget.style.background = 'white'; }}
+          >
+            {profileImage ? (
+              <img 
+                src={profileImage.startsWith('http') ? profileImage : `http://localhost:5000${profileImage}`} 
+                alt="Profile" 
+                style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              <span style={{ fontSize: '1rem' }}>👤</span>
+            )}
+            <span>{profileName || 'Loading...'}</span>
+            <span style={{ fontSize: '0.6rem', color: 'var(--foreground-muted)', transform: showAccountDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+          </button>
+
+          {showAccountDropdown && (
+            <div 
+              style={{
+                position: 'absolute',
+                top: '110%',
+                right: 0,
+                background: 'white',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                width: '160px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                padding: '0.5rem',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.25rem',
+                animation: 'slideDown 0.2s ease',
+              }}
+            >
+              <button
+                onClick={() => { setShowAccountDropdown(false); router.push('/profile'); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--foreground)',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '4px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  transition: 'var(--transition)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--secondary)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                <span>👤</span>
+                <span>My Profile</span>
+              </button>
+              <button
+                onClick={() => { setShowAccountDropdown(false); logout(); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--danger)',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '4px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  transition: 'var(--transition)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                <span>🚪</span>
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Add minimal css for animation inline to avoid editing global files */}
         <style dangerouslySetInnerHTML={{__html: `
