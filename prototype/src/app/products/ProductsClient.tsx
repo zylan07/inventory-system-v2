@@ -11,6 +11,41 @@ import * as XLSX from "xlsx";
 type SortKey = "group" | "product" | "model" | "minStock" | "unit";
 type SortDir = "asc" | "desc";
 
+const highlightText = (text: string, query: string) => {
+  if (!text) return "";
+  if (!query || !query.trim()) return text;
+
+  const keywords = query.split(" ").filter(Boolean);
+  if (keywords.length === 0) return text;
+
+  const escaped = keywords.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) => 
+        regex.test(part) ? (
+          <mark 
+            key={i} 
+            style={{ 
+              background: '#fef08a', 
+              color: '#854d0e', 
+              padding: '0 2px', 
+              borderRadius: '2px',
+              fontWeight: 600
+            }}
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
+
 export default function ProductsClient({ initialData, refresh }: { initialData: InventoryDb; refresh: () => void }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -26,10 +61,41 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
   // Client-side search, sort, pagination
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("model");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
+
+  // Advanced dropdown filter states
+  const [filterGroup, setFilterGroup] = useState("");
+  const [filterProduct, setFilterProduct] = useState("");
+  const [filterWarehouse, setFilterWarehouse] = useState("");
+  const [filterStockStatus, setFilterStockStatus] = useState("");
+
+  // Debouncing effect for search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Ignore extra internal spaces, leading/trailing spaces
+      const cleaned = search.trim().replace(/\s+/g, " ");
+      setDebouncedSearch(cleaned);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Timeline modal states
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [activeTimelineProductId, setActiveTimelineProductId] = useState<string | number | null>(null);
+  const [timelineData, setTimelineData] = useState<{
+    product: any;
+    currentStock: any[];
+    transactions: any[];
+  } | null>(null);
+  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState(false);
+  const [timelineFilterType, setTimelineFilterType] = useState("All");
+  const [timelineSortDir, setTimelineSortDir] = useState<"desc" | "asc">("desc");
 
   // Import Excel modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -69,7 +135,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
   // Prevent background scrolling when modals are open
   useEffect(() => {
-    if (showImportModal || showEditModal) {
+    if (showImportModal || showEditModal || showTimelineModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -77,7 +143,133 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showImportModal, showEditModal]);
+  }, [showImportModal, showEditModal, showTimelineModal]);
+
+  // Listen for Escape key to close Timeline modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showTimelineModal) {
+        setShowTimelineModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showTimelineModal]);
+
+  // Extensible Timeline Architecture: Normalize movement & catalog creation events
+  const normalizedEvents = useMemo(() => {
+    if (!timelineData) return [];
+    const list: any[] = [];
+
+    // 1. Add Creation Event
+    if (timelineData.product.created_at) {
+      list.push({
+        id: 'create',
+        type: 'CREATED',
+        title: 'Product Created',
+        timestamp: new Date(timelineData.product.created_at),
+        user: 'System/Import',
+        warehouse: 'Initial Catalog',
+        quantity: null,
+        remarks: 'Product initialized in database.',
+        refId: `PRD-${timelineData.product.id}`,
+        color: '#64748b', // Gray
+        icon: (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        )
+      });
+    }
+
+    // 2. Add Transactions
+    timelineData.transactions.forEach((tx: any) => {
+      const isExcel = tx.narration && tx.narration.toLowerCase().includes('excel');
+      let title = tx.type;
+      let color = '#3b82f6'; // Blue default
+      let icon = null;
+
+      if (tx.type === 'INWARD') {
+        title = isExcel ? 'Excel Import' : 'Inward Stock';
+        color = '#10b981'; // Green
+        icon = (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M19 12l-7 7-7-7" />
+          </svg>
+        );
+      } else if (tx.type === 'OUTWARD') {
+        title = 'Outward Stock';
+        color = '#ef4444'; // Red
+        icon = (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        );
+      } else if (tx.type === 'TRANSFER') {
+        title = 'Warehouse Transfer';
+        color = '#3b82f6'; // Blue
+        icon = (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m16 3 4 4-4 4M8 21l-4-4 4-4M20 7H4M4 17h16" />
+          </svg>
+        );
+      } else if (tx.type === 'ADJUSTMENT') {
+        title = 'Physical Adjustment';
+        color = '#f59e0b'; // Orange
+        icon = (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+        );
+      }
+
+      list.push({
+        id: String(tx.id),
+        type: tx.type,
+        title,
+        timestamp: new Date(tx.created_at),
+        user: tx.user_name || tx.user_email || 'System',
+        warehouse: tx.type === 'TRANSFER' 
+          ? `${tx.from_warehouse_name} → ${tx.to_warehouse_name}`
+          : tx.warehouse_name || 'N/A',
+        quantity: tx.quantity,
+        remarks: tx.narration || '',
+        refId: tx.id ? `TXN-${tx.id}` : '',
+        color,
+        icon
+      });
+    });
+
+    // 3. Filter list
+    let filtered = list;
+    if (timelineFilterType !== "All") {
+      filtered = list.filter(e => e.type === timelineFilterType);
+    }
+
+    // 4. Sort list
+    filtered.sort((a, b) => {
+      const tA = a.timestamp.getTime();
+      const tB = b.timestamp.getTime();
+      return timelineSortDir === "desc" ? tB - tA : tA - tB;
+    });
+
+    return filtered;
+  }, [timelineData, timelineFilterType, timelineSortDir]);
+
+  // Group events by date for rendering headings
+  const groupedTimelineEvents = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    normalizedEvents.forEach(e => {
+      const dateStr = e.timestamp.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+      if (!groups[dateStr]) groups[dateStr] = [];
+      groups[dateStr].push(e);
+    });
+    return Object.entries(groups);
+  }, [normalizedEvents]);
 
   // Manual Creation Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,17 +330,77 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
   const sortArrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
-  // filtering and sorting calculations
+  // Unique values for dropdown filters
+  const uniqueGroups = useMemo(() => {
+    const groups = new Set<string>();
+    initialData.items.forEach(i => { if (i.group) groups.add(i.group); });
+    return Array.from(groups).sort();
+  }, [initialData.items]);
+
+  const uniqueProducts = useMemo(() => {
+    const products = new Set<string>();
+    initialData.items.forEach(i => { if (i.product) products.add(i.product); });
+    return Array.from(products).sort();
+  }, [initialData.items]);
+
+  // Advanced filtering and sorting calculations (Memoized)
   const filteredSorted = useMemo(() => {
     let items = initialData.items.filter(item => {
-      const q = search.toLowerCase();
-      return !search || (
-        item.model.toLowerCase().includes(q) ||
-        item.product.toLowerCase().includes(q) ||
-        item.group.toLowerCase().includes(q)
-      );
+      // 1. Group Dropdown Filter
+      if (filterGroup && item.group !== filterGroup) return false;
+
+      // 2. Product Name Dropdown Filter
+      if (filterProduct && item.product !== filterProduct) return false;
+
+      const totalStock = Object.values(item.stock).reduce((s, n) => s + n, 0);
+
+      // 3. Warehouse Dropdown Filter
+      if (filterWarehouse) {
+        const qty = item.stock[filterWarehouse] || 0;
+        if (qty === 0) return false;
+      }
+
+      // 4. Stock Status Dropdown Filter
+      if (filterStockStatus) {
+        const minVal = item.minStock ?? 10;
+        if (filterStockStatus === "in_stock" && totalStock <= 0) return false;
+        if (filterStockStatus === "low_stock" && (totalStock <= 0 || totalStock >= minVal)) return false;
+        if (filterStockStatus === "out_of_stock" && totalStock > 0) return false;
+        if (filterStockStatus === "overstock" && totalStock < minVal * 2) return false;
+      }
+
+      // 5. Multi-Keyword Debounced Search Filter
+      if (debouncedSearch) {
+        const keywords = debouncedSearch.toLowerCase().split(" ").filter(Boolean);
+        return keywords.every(kw => {
+          // Model number
+          if (item.model.toLowerCase().includes(kw)) return true;
+          // Product name
+          if (item.product.toLowerCase().includes(kw)) return true;
+          // Group name
+          if (item.group.toLowerCase().includes(kw)) return true;
+          // Description
+          if ((item.description || "").toLowerCase().includes(kw)) return true;
+          // Unit
+          if ((item.unit || "pcs").toLowerCase().includes(kw)) return true;
+          // Total stock
+          if (String(totalStock).includes(kw)) return true;
+          // Min stock
+          if (String(item.minStock ?? 10).includes(kw)) return true;
+          // Warehouse containing stock
+          const inWarehouse = initialData.warehouses.some(w => 
+            w.name.toLowerCase().includes(kw) && (item.stock[w.id] || 0) > 0
+          );
+          if (inWarehouse) return true;
+
+          return false;
+        });
+      }
+
+      return true;
     });
 
+    // Sorting
     items = [...items].sort((a, b) => {
       let va = a[sortKey === 'minStock' ? 'minStock' : sortKey === 'unit' ? 'unit' : sortKey];
       let vb = b[sortKey === 'minStock' ? 'minStock' : sortKey === 'unit' ? 'unit' : sortKey];
@@ -168,7 +420,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     });
 
     return items;
-  }, [initialData.items, search, sortKey, sortDir]);
+  }, [initialData.items, debouncedSearch, filterGroup, filterProduct, filterWarehouse, filterStockStatus, sortKey, sortDir, initialData.warehouses]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSorted.length / PAGE_SIZE));
   const paginated = filteredSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -428,6 +680,27 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     setShowEditModal(true);
   };
 
+  const openTimelineModal = async (productId: string | number) => {
+    setActiveTimelineProductId(productId);
+    setShowTimelineModal(true);
+    setIsTimelineLoading(true);
+    setTimelineError(false);
+    setTimelineData(null);
+    try {
+      const res = await apiFetch(`/products/${productId}/history`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Failed to load product history.");
+      }
+      setTimelineData(json.data);
+    } catch (err) {
+      console.error("Timeline load failed:", err);
+      setTimelineError(true);
+    } finally {
+      setIsTimelineLoading(false);
+    }
+  };
+
   // Reset Changes in Edit Modal
   const handleResetEdit = () => {
     if (!editingProduct) return;
@@ -600,22 +873,108 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
         {/* Catalog Table Container */}
         <div className="card md:col-span-2" style={{ padding: 0 }}>
-          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <h2 className="text-lg font-bold">Product Catalog</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
-                Total Products: {initialData.items.length}
-              </p>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <h2 className="text-lg font-bold">Product Catalog</h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
+                  Total Products: {initialData.items.length}
+                </p>
+              </div>
+              <div style={{ width: '250px' }}>
+                <input
+                  type="text"
+                  placeholder="Search model, name, group..."
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', borderRadius: '6px', border: '1px solid var(--border)', width: '100%' }}
+                />
+              </div>
             </div>
-            <div style={{ width: '250px' }}>
-              <input
-                type="text"
-                placeholder="Search model, name, group..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-                style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', borderRadius: '6px', border: '1px solid var(--border)', width: '100%' }}
-              />
+
+            {/* Advanced Filters Dropdown Group */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+              <select 
+                value={filterGroup} 
+                onChange={e => { setFilterGroup(e.target.value); setPage(1); }}
+                style={{ padding: '0.45rem 0.625rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', minWidth: '130px', outline: 'none' }}
+              >
+                <option value="">All Groups</option>
+                {uniqueGroups.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <select 
+                value={filterProduct} 
+                onChange={e => { setFilterProduct(e.target.value); setPage(1); }}
+                style={{ padding: '0.45rem 0.625rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', minWidth: '130px', outline: 'none' }}
+              >
+                <option value="">All Products</option>
+                {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <select 
+                value={filterWarehouse} 
+                onChange={e => { setFilterWarehouse(e.target.value); setPage(1); }}
+                style={{ padding: '0.45rem 0.625rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', minWidth: '130px', outline: 'none' }}
+              >
+                <option value="">All Warehouses</option>
+                {initialData.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+              <select 
+                value={filterStockStatus} 
+                onChange={e => { setFilterStockStatus(e.target.value); setPage(1); }}
+                style={{ padding: '0.45rem 0.625rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', minWidth: '130px', outline: 'none' }}
+              >
+                <option value="">All Stock Status</option>
+                <option value="in_stock">In Stock</option>
+                <option value="low_stock">Low Stock</option>
+                <option value="out_of_stock">Out Of Stock</option>
+                <option value="overstock">Overstock</option>
+              </select>
             </div>
+
+            {/* Active Filters Pills */}
+            {(filterGroup || filterProduct || filterWarehouse || filterStockStatus) && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>Active Filters:</span>
+                {filterGroup && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 500 }}>
+                    Group: {filterGroup}
+                    <button type="button" onClick={() => setFilterGroup("")} style={{ border: 'none', background: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>×</button>
+                  </span>
+                )}
+                {filterProduct && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 500 }}>
+                    Product: {filterProduct}
+                    <button type="button" onClick={() => setFilterProduct("")} style={{ border: 'none', background: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>×</button>
+                  </span>
+                )}
+                {filterWarehouse && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 500 }}>
+                    Warehouse: {initialData.warehouses.find(w => w.id === filterWarehouse)?.name}
+                    <button type="button" onClick={() => setFilterWarehouse("")} style={{ border: 'none', background: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>×</button>
+                  </span>
+                )}
+                {filterStockStatus && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 500 }}>
+                    Status: {filterStockStatus === 'in_stock' ? 'In Stock' : filterStockStatus === 'low_stock' ? 'Low Stock' : filterStockStatus === 'out_of_stock' ? 'Out of Stock' : 'Overstock'}
+                    <button type="button" onClick={() => setFilterStockStatus("")} style={{ border: 'none', background: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>×</button>
+                  </span>
+                )}
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setFilterGroup("");
+                    setFilterProduct("");
+                    setFilterWarehouse("");
+                    setFilterStockStatus("");
+                    setPage(1);
+                  }} 
+                  className="btn-secondary" 
+                  style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem', borderRadius: '4px' }}
+                >
+                  Clear All
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="table-wrapper" style={{ maxHeight: '600px', overflowY: 'auto' }}>
@@ -633,20 +992,34 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
               <tbody>
                 {paginated.map((item) => (
                   <tr key={item.id}>
-                    <td style={{ fontWeight: 600 }}>{item.model}</td>
+                    <td style={{ fontWeight: 600 }}>{highlightText(item.model, debouncedSearch)}</td>
                     <td>
-                      <div>{item.product}</div>
+                      <div>{highlightText(item.product, debouncedSearch)}</div>
                       {item.description && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '2px' }}>
-                          {item.description}
+                          {highlightText(item.description, debouncedSearch)}
                         </div>
                       )}
                     </td>
-                    <td>{item.group}</td>
-                    <td>{item.unit || 'pcs'}</td>
-                    <td>{item.minStock ?? 10}</td>
+                    <td>{highlightText(item.group, debouncedSearch)}</td>
+                    <td>{highlightText(item.unit || 'pcs', debouncedSearch)}</td>
+                    <td>{highlightText(String(item.minStock ?? 10), debouncedSearch)}</td>
                     <td style={{ textAlign: 'center' }}>
                       <button 
+                        type="button"
+                        onClick={() => openTimelineModal(item.id)} 
+                        className="btn-action-edit"
+                        style={{ marginRight: '0.5rem' }}
+                        title="View Product History"
+                        aria-label="View Product History"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle' }}>
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                      </button>
+                      <button 
+                        type="button"
                         onClick={() => openEditModal(item)} 
                         className="btn-action-edit"
                         title="Edit Product"
@@ -1139,6 +1512,343 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Product Timeline Modal */}
+      {showTimelineModal && (
+        <div style={modalOverlayStyle} role="dialog" aria-modal="true" aria-label="Product Lifecycle Timeline">
+          <div 
+            style={{ 
+              background: 'white',
+              borderRadius: '12px',
+              width: '95%',
+              maxWidth: '680px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '90vh',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '1.25rem 1.5rem', 
+              borderBottom: '1px solid var(--border)' 
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Product Lifecycle History</h2>
+              <button 
+                type="button" 
+                onClick={() => setShowTimelineModal(false)} 
+                aria-label="Close Product History modal"
+                style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--foreground-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ 
+              padding: '1.5rem', 
+              overflowY: 'auto', 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1.25rem' 
+            }}>
+              {/* 1. Loading Skeleton loader */}
+              {isTimelineLoading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem' }}>
+                  <div style={{ height: '40px', background: '#f1f5f9', borderRadius: '6px', width: '60%', animation: 'pulse 1.5s infinite' }} />
+                  <div style={{ height: '100px', background: '#f1f5f9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                  <div style={{ height: '50px', background: '#f1f5f9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                  <div style={{ height: '50px', background: '#f1f5f9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                </div>
+              )}
+
+              {/* 2. Error Message Retry Block */}
+              {timelineError && (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center' }}>
+                  <div style={{ transform: 'scale(0.85)', marginBottom: '-1rem' }}>
+                    <EmptyState 
+                      type="search" 
+                      onPrimaryAction={() => activeTimelineProductId && openTimelineModal(activeTimelineProductId)}
+                    />
+                  </div>
+                  <p style={{ color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, marginTop: '1rem' }}>
+                    Unable to load product history.
+                  </p>
+                  <button 
+                    type="button"
+                    onClick={() => activeTimelineProductId && openTimelineModal(activeTimelineProductId)} 
+                    className="btn-primary" 
+                    aria-label="Retry loading product history"
+                    style={{ marginTop: '0.75rem', padding: '0.45rem 1.25rem', borderRadius: '6px' }}
+                  >
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+
+              {/* 3. Empty History Block */}
+              {!isTimelineLoading && !timelineError && timelineData && normalizedEvents.length === 0 && (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center' }}>
+                  <div style={{ transform: 'scale(0.85)' }}>
+                    <EmptyState 
+                      type="search" 
+                      onPrimaryAction={() => {
+                        setTimelineFilterType("All");
+                        setTimelineSortDir("desc");
+                      }}
+                    />
+                  </div>
+                  <p style={{ color: 'var(--foreground-muted)', fontSize: '0.875rem', marginTop: '1rem' }}>
+                    No movement history available for this product.
+                  </p>
+                  {timelineFilterType !== "All" && (
+                    <button 
+                      type="button"
+                      onClick={() => setTimelineFilterType("All")} 
+                      className="btn-secondary" 
+                      aria-label="Reset filter type to all"
+                      style={{ marginTop: '0.75rem', padding: '0.45rem 1rem', borderRadius: '6px' }}
+                    >
+                      Reset Filter
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 4. Loaded Timeline Content */}
+              {!isTimelineLoading && !timelineError && timelineData && normalizedEvents.length > 0 && (
+                <>
+                  {/* Header Summary Card */}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem', background: '#fafafa' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem 1rem' }}>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>PRODUCT NAME</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)' }}>{timelineData.product.product_name}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>MODEL NUMBER</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)' }}>{timelineData.product.model_no}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>GROUP</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)' }}>{timelineData.product.group_name}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>MINIMUM STOCK</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)' }}>{timelineData.product.min_stock ?? 10} {timelineData.product.unit || 'pcs'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>TOTAL STOCK</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>
+                          {timelineData.currentStock.reduce((s, n) => s + n.quantity, 0)} {timelineData.product.unit || 'pcs'}
+                        </div>
+                      </div>
+                      {timelineData.product.created_at && (
+                        <div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>CREATED DATE</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)' }}>
+                            {new Date(timelineData.product.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Warehouse wise badges */}
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--foreground-muted)', marginBottom: '0.5rem' }}>
+                        Warehouse Breakdown ({timelineData.currentStock.filter(st => st.quantity > 0).length} Active Warehouses)
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {timelineData.currentStock.map(st => (
+                          <div 
+                            key={st.warehouse_id} 
+                            style={{ 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '6px', 
+                              padding: '0.4rem 0.75rem', 
+                              background: 'white', 
+                              minWidth: '100px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                            }}
+                          >
+                            <span style={{ fontSize: '0.68rem', color: 'var(--foreground-muted)', fontWeight: 600 }}>{st.warehouse_name}</span>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: st.quantity > 0 ? 'var(--primary)' : 'var(--foreground-muted)' }}>
+                              {st.quantity} {timelineData.product.unit || 'pcs'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filters & Sorting Toolbar */}
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      flexWrap: 'wrap', 
+                      gap: '0.75rem', 
+                      borderTop: '1px solid var(--border)', 
+                      borderBottom: '1px solid var(--border)', 
+                      padding: '0.75rem 0',
+                      background: '#f8fafc',
+                      margin: '0.5rem 0',
+                      borderRadius: '6px',
+                      paddingLeft: '0.75rem',
+                      paddingRight: '0.75rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--foreground-muted)' }}>Event:</span>
+                      <select 
+                        value={timelineFilterType} 
+                        onChange={e => setTimelineFilterType(e.target.value)}
+                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.78rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'white', outline: 'none' }}
+                      >
+                        <option value="All">All Events</option>
+                        <option value="CREATED">Created</option>
+                        <option value="INWARD">Inward</option>
+                        <option value="OUTWARD">Outward</option>
+                        <option value="TRANSFER">Transfer</option>
+                        <option value="ADJUSTMENT">Adjustment</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--foreground-muted)' }}>Order:</span>
+                      <select 
+                        value={timelineSortDir} 
+                        onChange={e => setTimelineSortDir(e.target.value as any)}
+                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.78rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'white', outline: 'none' }}
+                      >
+                        <option value="desc">Newest First</option>
+                        <option value="asc">Oldest First</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Visual Chronological List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', paddingLeft: '0.5rem', position: 'relative' }}>
+                    {groupedTimelineEvents.map(([dateStr, events]) => (
+                      <div key={dateStr}>
+                        {/* Date Group Heading */}
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span>📅</span>
+                          <span>{dateStr}</span>
+                        </div>
+
+                        {/* Event Items in Group */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '2px solid #e2e8f0', marginLeft: '0.5rem', paddingLeft: '1.25rem' }}>
+                          {events.map((evt, idx) => (
+                            <div key={evt.id || idx} style={{ position: 'relative' }}>
+                              {/* Colored Visual Node & Icon */}
+                              <div 
+                                style={{ 
+                                  position: 'absolute', 
+                                  left: '-28px', 
+                                  top: '4px', 
+                                  width: '20px', 
+                                  height: '20px', 
+                                  borderRadius: '50%', 
+                                  background: evt.color, 
+                                  color: 'white', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                  zIndex: 10
+                                }}
+                              >
+                                {evt.icon}
+                              </div>
+
+                              {/* Normalized card parameters */}
+                              <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem 1rem', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--foreground)' }}>{evt.title}</span>
+                                  {evt.quantity !== null && (
+                                    <span 
+                                      className="badge" 
+                                      style={{ 
+                                        background: `${evt.color}15`, 
+                                        color: evt.color, 
+                                        border: `1.5px solid ${evt.color}30`, 
+                                        fontSize: '0.725rem',
+                                        fontWeight: 700,
+                                        borderRadius: '12px',
+                                        padding: '0.1rem 0.5rem'
+                                      }}
+                                    >
+                                      {evt.quantity > 0 ? `+${evt.quantity}` : evt.quantity} {timelineData.product.unit || 'pcs'}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 0.75rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
+                                  <div>👤 <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{evt.user}</span></div>
+                                  <div>📦 <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{evt.warehouse}</span></div>
+                                  <div>⏰ {evt.timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                                  {evt.refId && <div>🆔 <span style={{ fontFamily: 'monospace' }}>{evt.refId}</span></div>}
+                                </div>
+
+                                {evt.remarks && (
+                                  <div 
+                                    style={{ 
+                                      marginTop: '0.5rem', 
+                                      fontSize: '0.725rem', 
+                                      background: '#f8fafc', 
+                                      padding: '0.4rem 0.6rem', 
+                                      borderRadius: '4px', 
+                                      color: 'var(--foreground)',
+                                      border: '1px solid var(--border)',
+                                      fontStyle: 'italic',
+                                      wordBreak: 'break-word'
+                                    }}
+                                  >
+                                    💬 "{evt.remarks}"
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ 
+              padding: '1rem 1.5rem', 
+              borderTop: '1px solid var(--border)', 
+              background: 'var(--secondary)', 
+              display: 'flex', 
+              justifyContent: 'flex-end'
+            }}>
+              <button 
+                type="button" 
+                onClick={() => setShowTimelineModal(false)} 
+                className="btn-secondary"
+                aria-label="Close Product History modal"
+                style={{ padding: '0.5rem 1.25rem', borderRadius: '6px', fontWeight: 600 }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

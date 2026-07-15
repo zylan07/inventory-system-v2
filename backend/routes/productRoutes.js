@@ -9,5 +9,6 @@ router.get('/', productController.getProducts);
 router.post('/', productController.createProduct);
 router.post('/import', upload.single('file'), productController.importProducts);
 router.put('/:id', productController.updateProduct);
+router.get('/:id/history', productController.getProductHistory);
 
 module.exports = router;
