@@ -9,7 +9,7 @@ import { useInventoryData } from "@/lib/useInventoryData";
 export default function InwardPage() {
   const { userRole } = useAuth();
   const router = useRouter();
-  const { data, loading, error, refresh } = useInventoryData();
+  const { data, loading, errors, refresh } = useInventoryData({ products: true, warehouses: true, stock: true });
 
   useEffect(() => {
     if (userRole && userRole === 'Basic User') {
@@ -21,18 +21,29 @@ export default function InwardPage() {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  if (error || !data) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  const hasError = errors.products || errors.stock;
+  if (hasError) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
+        {errors.products || errors.stock || "Error loading inward page data."}
+      </div>
+    );
   }
 
   if (!userRole || userRole === 'Basic User') {
     return null;
   }
 
+  const db = {
+    items: data.stock || [],
+    warehouses: data.warehouses || [],
+    transactions: []
+  };
+
   return (
     <div>
       <h1 style={{ marginBottom: '2rem' }}>Inward Stock</h1>
-      <TransactionForm db={data} type="INWARD" refresh={refresh} />
+      <TransactionForm db={db} type="INWARD" refresh={refresh} />
     </div>
   );
 }

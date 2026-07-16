@@ -9,7 +9,7 @@ import { useInventoryData } from "@/lib/useInventoryData";
 export default function ProductsPage() {
   const { userRole } = useAuth();
   const router = useRouter();
-  const { data, loading, error, refresh } = useInventoryData();
+  const { data, loading, errors, refresh } = useInventoryData({ products: true });
 
   useEffect(() => {
     if (userRole && userRole !== 'Admin') {
@@ -21,13 +21,23 @@ export default function ProductsPage() {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  if (error || !data) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  if (errors.products) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
+        {errors.products}
+      </div>
+    );
   }
 
   if (!userRole || userRole !== 'Admin') {
     return null;
   }
 
-  return <ProductsClient initialData={data} refresh={refresh} />;
+  const db = {
+    items: data.products || [],
+    warehouses: [],
+    transactions: []
+  };
+
+  return <ProductsClient initialData={db} refresh={refresh} />;
 }

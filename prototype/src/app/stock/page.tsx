@@ -9,7 +9,7 @@ import { useInventoryData } from "@/lib/useInventoryData";
 export default function StockPage() {
   const { userRole } = useAuth();
   const router = useRouter();
-  const { data, loading, error } = useInventoryData();
+  const { data, loading, errors } = useInventoryData({ stock: true, warehouses: true });
 
   useEffect(() => {
     if (userRole && userRole === 'Basic User') {
@@ -21,13 +21,23 @@ export default function StockPage() {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  if (error || !data) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>Error loading data.</div>;
+  if (errors.stock) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
+        {errors.stock}
+      </div>
+    );
   }
 
   if (!userRole || userRole === 'Basic User') {
     return null;
   }
 
-  return <StockClient initialData={data} />;
+  const db = {
+    items: data.stock || [],
+    warehouses: data.warehouses || [],
+    transactions: []
+  };
+
+  return <StockClient initialData={db} />;
 }
