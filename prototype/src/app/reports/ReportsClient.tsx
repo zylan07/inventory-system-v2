@@ -111,29 +111,65 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
   const stockReport = useMemo(() => {
     if (!reportMonth) return [];
     const [y, m] = reportMonth.split('-').map(Number);
-    const monthStart = new Date(y, m - 1, 1);
-    const monthEnd = new Date(y, m, 0, 23, 59, 59);
+    const monthStart = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    const monthEnd = new Date(y, m, 0, 23, 59, 59, 999);
 
     return initialData.items.map(item => {
-      // Current stock is "closing stock"
-      const closing = Object.values(item.stock).reduce((s, n) => s + n, 0);
+      // Current stock is the live stock
+      const currentStock = Object.values(item.stock).reduce((s, n) => s + n, 0);
 
-      // Compute what happened during the month
+      // Compute net changes after monthStart and after monthEnd
+      let netChangeAfterStart = 0;
+      let netChangeAfterEnd = 0;
+
+      // Compute month's inward/outward values for display columns
       let inwardThisMonth = 0;
       let outwardThisMonth = 0;
-      let adjustmentThisMonth = 0;
 
       initialData.transactions.forEach(tx => {
         if (tx.itemId !== item.id) return;
-        const d = new Date(tx.date);
-        if (d < monthStart || d > monthEnd) return;
-        if (tx.type === 'INWARD') inwardThisMonth += tx.quantity;
-        else if (tx.type === 'OUTWARD') outwardThisMonth += tx.quantity;
-        else if (tx.type === 'ADJUSTMENT') adjustmentThisMonth += tx.quantity;
+        const txDate = new Date(tx.date);
+
+        // Transaction delta contribution to global stock
+        let delta = 0;
+        if (tx.type === 'INWARD') {
+          delta = tx.quantity;
+        } else if (tx.type === 'OUTWARD') {
+          delta = -tx.quantity;
+        } else if (tx.type === 'ADJUSTMENT') {
+          if (tx.adjustmentType === 'ADD') {
+            delta = tx.quantity;
+          } else if (tx.adjustmentType === 'SUBTRACT') {
+            delta = -tx.quantity;
+          }
+        } // TRANSFER delta is 0 globally
+
+        // Accumulate changes after monthStart and monthEnd
+        if (txDate >= monthStart) {
+          netChangeAfterStart += delta;
+        }
+        if (txDate > monthEnd) {
+          netChangeAfterEnd += delta;
+        }
+
+        // Accumulate month's inward/outward stats for display
+        if (txDate >= monthStart && txDate <= monthEnd) {
+          if (tx.type === 'INWARD') {
+            inwardThisMonth += tx.quantity;
+          } else if (tx.type === 'OUTWARD') {
+            outwardThisMonth += tx.quantity;
+          } else if (tx.type === 'ADJUSTMENT') {
+            if (tx.adjustmentType === 'ADD') {
+              inwardThisMonth += tx.quantity;
+            } else if (tx.adjustmentType === 'SUBTRACT') {
+              outwardThisMonth += tx.quantity;
+            }
+          }
+        }
       });
 
-      // Opening = Closing - Inward + Outward (reverse the month's net change)
-      const opening = closing - inwardThisMonth + outwardThisMonth;
+      const opening = currentStock - netChangeAfterStart;
+      const closing = currentStock - netChangeAfterEnd;
 
       return {
         id: item.id,
@@ -143,7 +179,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
         opening: Math.max(0, opening),
         inward: inwardThisMonth,
         outward: outwardThisMonth,
-        closing,
+        closing: Math.max(0, closing),
       };
     }).sort((a, b) => a.group.localeCompare(b.group) || a.model.localeCompare(b.model));
   }, [initialData, reportMonth]);
