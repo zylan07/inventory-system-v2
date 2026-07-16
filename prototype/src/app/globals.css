@@ -915,4 +915,81 @@ td {
   }
 }
 
+/* ==========================
+   Tablet Layout (max-width: 1023px)
+========================== */
+@media (max-width: 1023px) {
+  /* Reduce header padding to give more breathing room to elements */
+  .app-header {
+    padding: 0 0.75rem !important;
+  }
+
+  /* Truncate mobile navbar brand title cleanly to avoid overlap/pushing */
+  .mobile-brand-title {
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ==========================
+   Mobile Layout (max-width: 767px)
+========================== */
+@media (max-width: 767px) {
+  /* Smaller screens custom brand truncation max-width to avoid collision */
+  @media (max-width: 350px) {
+    .mobile-brand-title {
+      max-width: 85px;
+    }
+  }
+
+  /* Prevent notification dropdown clipping on smaller viewports */
+  .notification-dropdown {
+    width: 320px !important;
+    right: -10px !important;
+  }
+  @media (max-width: 360px) {
+    .notification-dropdown {
+      width: 290px !important;
+      right: -20px !important;
+    }
+  }
+
+  /* Scale login cards padding for mobile cards */
+  .login-card-container form {
+    padding: 1.25rem !important;
+  }
+
+  /* Prevent pagination wrapping by constraining button target sizes */
+  .pagination button {
+    min-height: 36px !important;
+  }
+}
+
+/* ==========================
+   Shared Responsive Utilities (max-width: 767px)
+========================== */
+@media (max-width: 767px) {
+  /* Stack buttons inside action footers vertically on mobile */
+  .modal-footer-actions,
+  .profile-actions,
+  .logo-action-buttons,
+  .settings-actions,
+  .backup-action-buttons {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 0.5rem !important;
+  }
+  
+  .modal-footer-actions button,
+  .profile-actions button,
+  .logo-action-buttons button,
+  .settings-actions button,
+  .backup-action-buttons button {
+    width: 100% !important;
+  }
+}
+
 

@@ -191,7 +191,8 @@ export default function UsersPage() {
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="table-wrapper">
+          <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th>ID</th>
@@ -267,7 +268,8 @@ export default function UsersPage() {
               ))
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {showModal && (
@@ -377,7 +379,7 @@ export default function UsersPage() {
             </div>
 
             {/* Modal Footer */}
-            <div style={{ 
+            <div className="modal-footer-actions" style={{ 
               padding: '1rem 1.5rem', 
               borderTop: '1px solid var(--border)', 
               background: 'var(--secondary)', 

@@ -1106,7 +1106,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
             </div>
 
             {/* Modal Footer */}
-            <div style={{ 
+            <div className="modal-footer-actions" style={{ 
               padding: '1rem 1.5rem', 
               borderTop: '1px solid var(--border)', 
               background: 'var(--secondary)', 

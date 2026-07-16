@@ -321,7 +321,7 @@ export default function SettingsPage() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <input type="file" accept="image/*" onChange={handleLogoChange} ref={fileInputRef} style={{ display: 'none' }} />
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div className="logo-action-buttons" style={{ display: 'flex', gap: '0.5rem' }}>
                     <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary">
                       Choose Image
                     </button>
@@ -343,7 +343,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+            <div className="settings-actions" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
               <button type="button" onClick={() => setCompanyInfo(origCompanyInfo)} className="btn-secondary">Reset Name</button>
               <button type="submit" disabled={saveLoading['company_info']} className="btn-primary">
                 {saveLoading['company_info'] ? 'Saving...' : 'Save Details'}
@@ -358,7 +358,7 @@ export default function SettingsPage() {
           <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginBottom: '1.25rem' }}>
             Generate database backups to download locally or upload a backup file to restore system records.
           </p>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="backup-action-buttons" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button 
               type="button" 
               onClick={handleCreateBackup} 

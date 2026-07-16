@@ -207,7 +207,7 @@ export default function Navbar() {
   });
 
   return (
-    <header style={{
+    <header className="app-header" style={{
         height: '60px',
         background: '#ffffff',
         borderBottom: '1px solid var(--border)',
@@ -259,7 +259,7 @@ export default function Navbar() {
             ) : (
               <span style={{ fontSize: '1.2rem' }}>📦</span>
             )}
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)', textTransform: 'uppercase' }}>
+            <div className="mobile-brand-title" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)', textTransform: 'uppercase' }}>
               {companyName}
             </div>
           </div>
@@ -315,7 +315,7 @@ export default function Navbar() {
 
           {/* Notification Dropdown Container */}
           {showDropdown && (
-            <div style={{
+            <div className="notification-dropdown" style={{
               position: 'absolute',
               top: '100%',
               right: 0,

@@ -395,7 +395,7 @@ export default function ProfileClient({ initialProfile, refresh }: { initialProf
             </div>
 
             {/* Save & Reset buttons for Section 1 */}
-            <div style={{ display: "flex", gap: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem", justifyContent: "flex-end" }}>
+            <div className="profile-actions" style={{ display: "flex", gap: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem", justifyContent: "flex-end" }}>
               <button 
                 type="button" 
                 onClick={handleResetProfile} 
@@ -507,7 +507,7 @@ export default function ProfileClient({ initialProfile, refresh }: { initialProf
               </div>
 
               {/* Password section actions */}
-              <div style={{ display: "flex", gap: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem", justifyContent: "flex-end" }}>
+              <div className="profile-actions" style={{ display: "flex", gap: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem", justifyContent: "flex-end" }}>
                 <button 
                   type="button" 
                   onClick={handleClearPassword} 
