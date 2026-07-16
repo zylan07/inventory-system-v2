@@ -454,7 +454,7 @@ export default function Navbar() {
         </div>
 
         {/* Role pill */}
-        <div style={{
+        <div className="navbar-role-pill" style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.5rem',
@@ -478,6 +478,7 @@ export default function Navbar() {
         {/* User Account Menu Dropdown */}
         <div ref={accountDropdownRef} className="profile-trigger-container" style={{ position: 'relative' }}>
           <button
+            className="profile-trigger-button"
             onClick={() => setShowAccountDropdown(!showAccountDropdown)}
             style={{
               background: 'white',

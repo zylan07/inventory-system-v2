@@ -950,12 +950,25 @@ td {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .profile-trigger-button {
+    padding: 0.375rem 0.5rem !important;
+    gap: 0.25rem !important;
+  }
 }
 
 /* ==========================
    Mobile Layout (max-width: 767px)
 ========================== */
 @media (max-width: 767px) {
+  .navbar-role-pill {
+    display: none !important;
+  }
+
+  .profile-name-text {
+    max-width: 60px !important;
+  }
+
   /* Smaller screens custom brand truncation max-width to avoid collision */
   @media (max-width: 350px) {
     .mobile-brand-title {
