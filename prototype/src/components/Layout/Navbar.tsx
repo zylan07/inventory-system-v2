@@ -476,7 +476,7 @@ export default function Navbar() {
         </div>
 
         {/* User Account Menu Dropdown */}
-        <div ref={accountDropdownRef} style={{ position: 'relative' }}>
+        <div ref={accountDropdownRef} className="profile-trigger-container" style={{ position: 'relative' }}>
           <button
             onClick={() => setShowAccountDropdown(!showAccountDropdown)}
             style={{

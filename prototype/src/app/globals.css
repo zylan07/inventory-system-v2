@@ -932,9 +932,14 @@ td {
     text-overflow: ellipsis;
   }
 
+  .profile-trigger-container {
+    position: static !important;
+  }
+
   .profile-dropdown {
-    right: 0 !important;
-    max-width: calc(100vw - 16px) !important;
+    right: 0.75rem !important;
+    top: 52px !important;
+    max-width: calc(100vw - 24px) !important;
   }
 
   .profile-name-text {
