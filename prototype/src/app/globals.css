@@ -931,6 +931,20 @@ td {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  .profile-dropdown {
+    right: 0 !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .profile-name-text {
+    max-width: 70px;
+    display: inline-block;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /* ==========================

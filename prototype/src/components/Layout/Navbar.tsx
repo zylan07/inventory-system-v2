@@ -505,12 +505,13 @@ export default function Navbar() {
             ) : (
               <span style={{ fontSize: '1rem' }}>👤</span>
             )}
-            <span>{profileName || 'Loading...'}</span>
+            <span className="profile-name-text">{profileName || 'Loading...'}</span>
             <span style={{ fontSize: '0.6rem', color: 'var(--foreground-muted)', transform: showAccountDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
           </button>
 
           {showAccountDropdown && (
             <div 
+              className="profile-dropdown"
               style={{
                 position: 'absolute',
                 top: '110%',
