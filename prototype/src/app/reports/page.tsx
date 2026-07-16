@@ -9,7 +9,7 @@ import { useInventoryData } from "@/lib/useInventoryData";
 export default function ReportsPage() {
   const { userRole } = useAuth();
   const router = useRouter();
-  const { data, loading, errors } = useInventoryData({ transactions: true, products: true, warehouses: true });
+  const { data, loading, errors } = useInventoryData({ transactions: true, stock: true, warehouses: true });
 
   useEffect(() => {
     if (userRole && userRole === 'Basic User') {
@@ -21,11 +21,11 @@ export default function ReportsPage() {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   }
 
-  const hasError = errors.transactions || errors.products || errors.warehouses;
+  const hasError = errors.transactions || errors.stock || errors.warehouses;
   if (hasError) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
-        {errors.transactions || errors.products || errors.warehouses || "Error loading reports data."}
+        {errors.transactions || errors.stock || errors.warehouses || "Error loading reports data."}
       </div>
     );
   }
@@ -35,7 +35,7 @@ export default function ReportsPage() {
   }
 
   const db = {
-    items: data.products || [],
+    items: data.stock || [],
     warehouses: data.warehouses || [],
     transactions: data.transactions || []
   };
