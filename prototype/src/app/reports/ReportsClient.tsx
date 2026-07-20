@@ -22,11 +22,12 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
   const { userRole } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions');
   const [companyName, setCompanyName] = useState('INVENTRA');
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     const fetchBranding = async () => {
       try {
-        const res = await fetch('http://localhost:5000/auth/branding');
+        const res = await fetch(`${baseUrl}/auth/branding`);
         const json = await res.json();
         if (json.success && json.data) {
           setCompanyName(json.data.name || 'INVENTRA');
@@ -34,7 +35,7 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
       } catch (e) {}
     };
     fetchBranding();
-  }, []);
+  }, [baseUrl]);
 
   // ── Transaction filters ──
   const [dateFrom, setDateFrom] = useState('');
@@ -56,9 +57,9 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
   const getRow = (tx: Transaction) => {
     const item = resolveItem(tx);
     const modelNumber = (tx.modelNumber || item?.model || 'Unknown').trim();
-    const fromWh = initialData.warehouses.find(w => w.id === tx.warehouseId)?.name || 'N/A';
+    const fromWh = tx.fromWarehouseName || tx.warehouseName || initialData.warehouses.find(w => w.id === tx.warehouseId)?.name || 'N/A';
     const toWh = tx.toWarehouseId
-      ? initialData.warehouses.find(w => w.id === tx.toWarehouseId)?.name || 'N/A'
+      ? tx.toWarehouseName || initialData.warehouses.find(w => w.id === tx.toWarehouseId)?.name || 'N/A'
       : '-';
     return { modelNumber, fromWh, toWh, item };
   };

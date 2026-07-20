@@ -40,10 +40,10 @@ exports.createProduct = async (req, res) => {
 
     const pool = getPool();
     
-    // Check if model number exists
-    const [existing] = await pool.query('SELECT id FROM products WHERE model_no = ?', [model_no]);
+    // Check if duplicate model number AND product name exists
+    const [existing] = await pool.query('SELECT id FROM products WHERE model_no = ? AND LOWER(product_name) = ?', [model_no, product_name.toLowerCase().trim()]);
     if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'Product with this Model Number already exists', data: null });
+      return res.status(400).json({ success: false, message: 'A product with this Model Number and Product Name already exists', data: null });
     }
 
     const [result] = await pool.query(
@@ -109,10 +109,10 @@ exports.updateProduct = async (req, res) => {
     }
     const oldProduct = existing[0];
 
-    // Check if model number exists on another product
-    const [duplicate] = await pool.query('SELECT id FROM products WHERE model_no = ? AND id != ?', [model_no, id]);
+    // Check if duplicate model number AND product name exists on another product
+    const [duplicate] = await pool.query('SELECT id FROM products WHERE model_no = ? AND LOWER(product_name) = ? AND id != ?', [model_no, product_name.toLowerCase().trim(), id]);
     if (duplicate.length > 0) {
-      return res.status(400).json({ success: false, message: 'Product with this Model Number already exists', data: null });
+      return res.status(400).json({ success: false, message: 'A product with this Model Number and Product Name already exists', data: null });
     }
 
     // Update details

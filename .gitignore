@@ -4,9 +4,15 @@ node_modules/
 # environments
 .env
 .env.local
+.env.production
+.env.development
+.env.test
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env
+prototype/.env.local
+prototype/.env
 
 # next.js
 .next/

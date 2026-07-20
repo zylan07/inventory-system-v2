@@ -14,6 +14,8 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const clientRoutes = require('./routes/clientRoutes');
+const purchaseQueueRoutes = require('./routes/purchaseQueueRoutes');
+const warehouseRoutes = require('./routes/warehouseRoutes');
 const { authMiddleware } = require('./middleware/authMiddleware');
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -33,6 +35,8 @@ app.use('/notifications', authMiddleware, notificationRoutes);
 app.use('/profile', authMiddleware, profileRoutes);
 app.use('/settings', authMiddleware, settingsRoutes);
 app.use('/clients', authMiddleware, clientRoutes);
+app.use('/purchase-queue', authMiddleware, purchaseQueueRoutes);
+app.use('/warehouses', authMiddleware, warehouseRoutes);
 
 const PORT = process.env.PORT || 5000;
 

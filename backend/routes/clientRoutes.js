@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db');
 const { logAction } = require('../utils/auditLogger');
+const { validatePhone, validateEmail, sanitizeEmail } = require('../utils/validators');
 const multer = require('multer');
 
 // Multer memory storage configuration for bulk imports
@@ -379,10 +380,24 @@ router.get('/:id', requireAdminOrManager, async (req, res) => {
 
 // POST /clients - Add single client record manually
 router.post('/', requireAdminOrManager, async (req, res) => {
-  const { company_name, contact_person, phone, email, gst, address, city, state, industry, remarks } = req.body;
-  if (!company_name) {
-    return res.status(400).json({ success: false, message: 'Company Name is required' });
+  const { company_name, contact_person, phone, email, address, city, state, industry, remarks } = req.body;
+  if (!company_name || company_name.trim().length < 2) {
+    return res.status(400).json({ success: false, message: 'Company Name is required and must be at least 2 characters.' });
   }
+  if (!contact_person || contact_person.trim().length < 2) {
+    return res.status(400).json({ success: false, message: 'Contact Person is required and must be at least 2 characters.' });
+  }
+  if (!phone || !validatePhone(phone)) {
+    return res.status(400).json({ success: false, message: 'Invalid phone number. Must contain 7 to 15 digits (digits and optional leading + only).' });
+  }
+  let sanitizedEmail = null;
+  if (email && email.trim() !== '') {
+    if (!validateEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email address format.' });
+    }
+    sanitizedEmail = sanitizeEmail(email);
+  }
+
   const pool = getPool();
   try {
     // Check if company exists
@@ -392,14 +407,13 @@ router.post('/', requireAdminOrManager, async (req, res) => {
     }
 
     const [result] = await pool.query(`
-      INSERT INTO clients (company_name, contact_person, phone, email, gst, address, city, state, industry, remarks)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (company_name, contact_person, phone, email, address, city, state, industry, remarks)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       company_name.trim(),
-      contact_person ? contact_person.trim() : null,
-      phone ? phone.trim() : null,
-      email ? email.trim() : null,
-      gst ? gst.trim().toUpperCase() : null,
+      contact_person.trim(),
+      phone.trim(),
+      sanitizedEmail,
       address ? address.trim() : null,
       city ? city.trim() : null,
       state ? state.trim() : null,
@@ -415,7 +429,7 @@ router.post('/', requireAdminOrManager, async (req, res) => {
       reference_type: 'clients',
       reference_id: newId,
       old_value: null,
-      new_value: { company_name, contact_person, email },
+      new_value: { company_name, contact_person, email: sanitizedEmail },
       description: `Created client account: ${company_name}`
     });
 
@@ -429,10 +443,24 @@ router.post('/', requireAdminOrManager, async (req, res) => {
 // PUT /clients/:id - Edit client details
 router.put('/:id', requireAdminOrManager, async (req, res) => {
   const { id } = req.params;
-  const { company_name, contact_person, phone, email, gst, address, city, state, industry, remarks } = req.body;
-  if (!company_name) {
-    return res.status(400).json({ success: false, message: 'Company Name is required' });
+  const { company_name, contact_person, phone, email, address, city, state, industry, remarks } = req.body;
+  if (!company_name || company_name.trim().length < 2) {
+    return res.status(400).json({ success: false, message: 'Company Name is required and must be at least 2 characters.' });
   }
+  if (!contact_person || contact_person.trim().length < 2) {
+    return res.status(400).json({ success: false, message: 'Contact Person is required and must be at least 2 characters.' });
+  }
+  if (!phone || !validatePhone(phone)) {
+    return res.status(400).json({ success: false, message: 'Invalid phone number. Must contain 7 to 15 digits.' });
+  }
+  let sanitizedEmail = null;
+  if (email && email.trim() !== '') {
+    if (!validateEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email address format.' });
+    }
+    sanitizedEmail = sanitizeEmail(email);
+  }
+
   const pool = getPool();
   try {
     const [exists] = await pool.query('SELECT * FROM clients WHERE id = ?', [id]);
@@ -449,15 +477,14 @@ router.put('/:id', requireAdminOrManager, async (req, res) => {
 
     await pool.query(`
       UPDATE clients 
-      SET company_name = ?, contact_person = ?, phone = ?, email = ?, gst = ?, 
+      SET company_name = ?, contact_person = ?, phone = ?, email = ?, 
           address = ?, city = ?, state = ?, industry = ?, remarks = ?
       WHERE id = ?
     `, [
       company_name.trim(),
-      contact_person ? contact_person.trim() : null,
-      phone ? phone.trim() : null,
-      email ? email.trim() : null,
-      gst ? gst.trim().toUpperCase() : null,
+      contact_person.trim(),
+      phone.trim(),
+      sanitizedEmail,
       address ? address.trim() : null,
       city ? city.trim() : null,
       state ? state.trim() : null,

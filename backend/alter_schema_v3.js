@@ -141,56 +141,27 @@ async function runMigration() {
     const [existingSettings] = await conn.query("SELECT COUNT(*) as count FROM system_settings WHERE setting_key = 'business_configuration'");
     if (existingSettings[0].count === 0) {
       const defaultConfig = {
-        company: {
+        company_details: {
           name: 'INVENTRA',
-          logoUrl: null,
           address: '123 Manufacturing Way, Chennai',
-          gst: '33AAAAA1111A1Z1',
-          contact: 'info@inventra.com'
+          gst: '33AAAAA1111A1Z1'
         },
         regional: {
-          language: 'en',
-          currency: 'INR (₹)',
-          timezone: 'Asia/Kolkata',
+          currency_symbol: '₹',
+          currency_name: 'INR',
           date_format: 'YYYY-MM-DD',
-          number_format: 'Standard'
+          default_language: 'en'
         },
-        inventory: {
-          lead_time_buffer_days: 2,
-          safety_stock_multiplier: 1.5,
-          default_analysis_period_days: 30,
+        thresholds: {
+          global_safety_multiplier: 1.5,
           low_stock_threshold: 10
         },
         notifications: {
-          inventory_alerts: {
-            email: { enabled: true, roles: ['Warehouse Team', 'Managers'], emails: ['wh@inventra.com'] },
-            sms: { enabled: false, numbers: [] },
-            whatsapp: { enabled: false, numbers: [] }
-          },
-          purchase_alerts: {
-            email: { enabled: true, roles: ['Purchase Team'], emails: ['purchase@inventra.com'] },
-            sms: { enabled: false, numbers: [] },
-            whatsapp: { enabled: false, numbers: [] }
-          },
-          client_alerts: {
-            email: { enabled: true, roles: ['Managers'], emails: ['billing@inventra.com'] },
-            sms: { enabled: false, numbers: [] },
-            whatsapp: { enabled: false, numbers: [] }
-          },
-          system_alerts: {
-            email: { enabled: true, roles: ['Admin'], emails: ['admin@inventra.com'] },
-            sms: { enabled: false, numbers: [] },
-            whatsapp: { enabled: false, numbers: [] }
-          },
-          security_alerts: {
-            email: { enabled: true, roles: ['Admin'], emails: ['security@inventra.com'] },
-            sms: { enabled: false, numbers: [] },
-            whatsapp: { enabled: false, numbers: [] }
-          }
-        },
-        client_settings: {
-          active_days: 30,
-          regular_days: 90
+          inventory: ['wh@inventra.com'],
+          purchase: ['purchase@inventra.com'],
+          client: ['billing@inventra.com'],
+          security: ['security@inventra.com'],
+          system: ['admin@inventra.com']
         },
         terminology: {
           ADJUSTMENT: 'Correct Stock',

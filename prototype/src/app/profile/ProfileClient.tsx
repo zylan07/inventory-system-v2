@@ -19,6 +19,7 @@ type UserProfile = {
 export default function ProfileClient({ initialProfile, refresh }: { initialProfile: UserProfile; refresh: () => void }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   // --- Section 1: Account Information States ---
   const [name, setName] = useState(initialProfile.name || "");
@@ -247,7 +248,7 @@ export default function ProfileClient({ initialProfile, refresh }: { initialProf
   } else if (profileImage) {
     resolvedAvatarUrl = profileImage.startsWith("http") 
       ? profileImage 
-      : `http://localhost:5000${profileImage}`;
+      : `${baseUrl}${profileImage}`;
   }
 
   const isGoogleUser = !!initialProfile.google_id;

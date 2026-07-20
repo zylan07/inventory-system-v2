@@ -26,7 +26,6 @@ const NAV_GROUPS = {
     { section: 'Reports & Stock', items: [
       { name: 'Stock Levels', path: '/stock', icon: '📦' },
       { name: 'Transactions', path: '/reports', icon: '📄' },
-      { name: 'Client Analytics', path: '/clients/analytics', icon: '📈' },
       { name: 'Adjustment', path: '/adjustment', icon: '⚖️' },
     ]},
     { section: 'System Administration', items: [
@@ -44,7 +43,6 @@ const NAV_GROUPS = {
     { section: 'Reports & Stock', items: [
       { name: 'Stock Levels', path: '/stock', icon: '📦' },
       { name: 'Transactions', path: '/reports', icon: '📄' },
-      { name: 'Client Analytics', path: '/clients/analytics', icon: '📈' },
     ]},
   ],
   'Basic User': [
@@ -74,6 +72,7 @@ export default function Sidebar() {
   const { userRole } = useAuth();
   const { t } = useLanguage();
   const pathname = usePathname();
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('INVENTRA');
   const [isOpen, setIsOpen] = useState(false);
@@ -81,7 +80,7 @@ export default function Sidebar() {
   useEffect(() => {
     const fetchBranding = async () => {
       try {
-        const res = await fetch('http://localhost:5000/auth/branding');
+        const res = await fetch(`${baseUrl}/auth/branding`);
         const json = await res.json();
         if (json.success && json.data) {
           setLogoUrl(json.data.logoUrl || null);
@@ -145,7 +144,7 @@ export default function Sidebar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {logoUrl ? (
             <img 
-              src={`http://localhost:5000${logoUrl}`} 
+              src={`${baseUrl}${logoUrl}`} 
               alt="Company Logo" 
               style={{ height: '28px', width: 'auto', objectFit: 'contain', borderRadius: '4px' }} 
             />

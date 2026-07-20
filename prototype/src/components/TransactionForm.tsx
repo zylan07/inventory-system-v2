@@ -3,7 +3,7 @@
 import { useAuth } from '@/components/AuthProvider';
 import { InventoryDb } from '@/lib/db';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ProductSelector, { ProductSelection } from '@/components/ProductSelector';
 import { apiFetch } from '@/lib/apiFetch';
 import { useToast } from '@/components/ToastProvider';
@@ -23,6 +23,36 @@ export default function TransactionForm({ db, type, refresh }: { db: InventoryDb
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
 
+  // Searchable client states
+  const [clients, setClients] = useState<any[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [selectedClient, setSelectedClient] = useState<any | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  useEffect(() => {
+    if (type === 'OUTWARD') {
+      apiFetch('/clients/all')
+        .then(res => res.json())
+        .then(json => {
+          if (json.success && Array.isArray(json.data)) {
+            setClients(json.data);
+          }
+        })
+        .catch(err => console.error("Failed to load clients:", err));
+    }
+  }, [type]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.form-group')) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   const currentItem = db.items.find(i => i.id === selection.itemId);
   const currentStock = currentItem && selectedWarehouse ? currentItem.stock[selectedWarehouse] || 0 : 0;
 
@@ -38,8 +68,8 @@ export default function TransactionForm({ db, type, refresh }: { db: InventoryDb
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selection.itemId) { showToast('Please select a product/model.', 'error'); return; }
-    if (type === 'OUTWARD' && !narration.trim()) {
-      showToast('Narration is required for outward transactions.', 'error');
+    if (type === 'OUTWARD' && !selectedClient) {
+      showToast('Please select a client before confirming the outward transaction.', 'error');
       return;
     }
     setLoading(true);
@@ -50,7 +80,8 @@ export default function TransactionForm({ db, type, refresh }: { db: InventoryDb
         quantity,
         warehouse_id: selectedWarehouse,
         to_warehouse_id: type === 'TRANSFER' ? toWarehouse : undefined,
-        narration: type === 'OUTWARD' ? narration.trim() : undefined,
+        client_id: type === 'OUTWARD' && selectedClient ? selectedClient.id : undefined,
+        narration: type === 'OUTWARD' ? (selectedClient ? `Sale to ${selectedClient.company_name}` : 'Direct Sale') : undefined,
       };
 
       const res = await apiFetch('/transactions', {
@@ -79,6 +110,8 @@ console.log("TOAST TRIGGERED");
       setSelectedWarehouse('');
       setToWarehouse('');
       setNarration('');
+      setSelectedClient(null);
+      setClientSearch('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Transaction failed';
       showToast(msg, 'error');
@@ -224,25 +257,117 @@ console.log("TOAST TRIGGERED");
           </div>
         )}
 
-        {/* Narration (OUTWARD) & Quantity */}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {/* Client Selector (OUTWARD) & Quantity */}
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
           {type === 'OUTWARD' && (
-            <div className="form-group" style={{ flex: 2, minWidth: '200px' }}>
+            <div className="form-group" style={{ flex: 2, minWidth: '200px', position: 'relative' }}>
               <label className="form-label" style={{ fontSize: isBasicUser ? '1rem' : '0.875rem' }}>
-                Narration <span style={{ color: 'var(--danger)' }}>*</span>
+                Client Selection (Optional)
               </label>
-              <input
-                type="text"
-                value={narration}
-                onChange={e => setNarration(e.target.value)}
-                autoComplete="off"
-                placeholder="Reason or destination..."
-                required
-                style={{
-                  fontSize: inputFontSize,
-                  padding: inputPadding,
-                }}
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onFocus={() => setShowDropdown(true)}
+                  onChange={e => {
+                    setClientSearch(e.target.value);
+                    if (selectedClient && e.target.value !== selectedClient.company_name) {
+                      setSelectedClient(null);
+                    }
+                  }}
+                  placeholder="Search by client name, contact, phone..."
+                  style={{
+                    fontSize: inputFontSize,
+                    padding: inputPadding,
+                    width: '100%'
+                  }}
+                />
+                {clientSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientSearch('');
+                      setSelectedClient(null);
+                      setShowDropdown(false);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      color: 'var(--foreground-muted)'
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {showDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: 'white',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  zIndex: 100,
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  marginTop: '4px'
+                }}>
+                  {clients.filter(c => {
+                    const q = clientSearch.toLowerCase();
+                    return !q || 
+                      (c.company_name || '').toLowerCase().includes(q) ||
+                      (c.contact_person || '').toLowerCase().includes(q) ||
+                      (c.phone || '').toLowerCase().includes(q) ||
+                      (c.email || '').toLowerCase().includes(q);
+                  }).length === 0 ? (
+                    <div style={{ padding: '0.75rem', fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
+                      No matching clients found
+                    </div>
+                  ) : (
+                    clients.filter(c => {
+                      const q = clientSearch.toLowerCase();
+                      return !q || 
+                        (c.company_name || '').toLowerCase().includes(q) ||
+                        (c.contact_person || '').toLowerCase().includes(q) ||
+                        (c.phone || '').toLowerCase().includes(q) ||
+                        (c.email || '').toLowerCase().includes(q);
+                    }).map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setSelectedClient(c);
+                          setClientSearch(c.company_name);
+                          setShowDropdown(false);
+                        }}
+                        style={{
+                          padding: '0.625rem 0.75rem',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: selectedClient?.id === c.id ? '#f1f5f9' : 'transparent',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = selectedClient?.id === c.id ? '#f1f5f9' : 'transparent'}
+                      >
+                        <div style={{ fontWeight: 600, color: 'var(--foreground)' }}>{c.company_name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', display: 'flex', gap: '0.5rem', marginTop: '2px' }}>
+                          <span>👤 {c.contact_person || 'N/A'}</span>
+                          {c.phone && <span>📞 {c.phone}</span>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
           <div className="form-group" style={{ flex: 1, minWidth: '120px' }}>
@@ -271,7 +396,7 @@ console.log("TOAST TRIGGERED");
         {/* Submit */}
         <button
           type="submit"
-          disabled={loading || !selection.itemId}
+          disabled={loading || !selection.itemId || (type === 'OUTWARD' && !selectedClient)}
           style={{
             background: typeColor,
             color: 'white',
@@ -280,8 +405,8 @@ console.log("TOAST TRIGGERED");
             fontSize: isBasicUser ? '1.1rem' : '0.875rem',
             fontWeight: 700,
             border: 'none',
-            cursor: loading || !selection.itemId ? 'not-allowed' : 'pointer',
-            opacity: loading || !selection.itemId ? 0.6 : 1,
+            cursor: loading || !selection.itemId || (type === 'OUTWARD' && !selectedClient) ? 'not-allowed' : 'pointer',
+            opacity: loading || !selection.itemId || (type === 'OUTWARD' && !selectedClient) ? 0.6 : 1,
             transition: 'var(--transition)',
             display: 'flex',
             alignItems: 'center',

@@ -26,6 +26,45 @@ router.get('/', requireAdmin, async (req, res) => {
     rows.forEach(r => {
       settings[r.setting_key] = r.setting_value;
     });
+
+    if (settings.business_configuration) {
+      const config = settings.business_configuration;
+      // If in old format, dynamically map it to the frontend's expected format
+      if (config.company && !config.company_details) {
+        settings.business_configuration = {
+          company_details: {
+            name: config.company.name || '',
+            address: config.company.address || '',
+            gst: config.company.gst || ''
+          },
+          regional: {
+            currency_symbol: config.regional?.currency?.includes('₹') ? '₹' : '$',
+            currency_name: config.regional?.currency?.split(' ')[0] || 'INR',
+            date_format: config.regional?.date_format || 'YYYY-MM-DD',
+            default_language: config.regional?.language || 'en'
+          },
+          thresholds: {
+            global_safety_multiplier: parseFloat(config.inventory?.safety_stock_multiplier) || 1.0,
+            low_stock_threshold: parseInt(config.inventory?.low_stock_threshold) || 10
+          },
+          notifications: {
+            inventory: config.notifications?.inventory_alerts?.email?.emails || [],
+            purchase: config.notifications?.purchase_alerts?.email?.emails || [],
+            client: config.notifications?.client_alerts?.email?.emails || [],
+            security: config.notifications?.security_alerts?.email?.emails || [],
+            system: config.notifications?.system_alerts?.email?.emails || []
+          },
+          terminology: config.terminology || {
+            ADJUSTMENT: 'Correct Stock',
+            TRANSFER: 'Move Stock',
+            NARRATION: 'Client',
+            WAREHOUSE: 'Warehouse',
+            STOCK: 'Stock'
+          }
+        };
+      }
+    }
+
     res.json({ success: true, data: settings });
   } catch (err) {
     console.error('Failed to fetch settings:', err.message);
@@ -240,7 +279,7 @@ router.post('/backup', requireAdmin, async (req, res) => {
     const adminName = uRows.length > 0 ? uRows[0].name : req.user.email;
 
     // 2. Map database table records
-    const tables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings'];
+    const tables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings', 'suppliers', 'clients', 'purchase_queue'];
     const backupData = {};
     for (const table of tables) {
       const [rows] = await pool.query(`SELECT * FROM ${table}`);
@@ -253,7 +292,7 @@ router.post('/backup', requireAdmin, async (req, res) => {
         created_by_name: adminName,
         created_by_email: req.user.email,
         app_version: '1.4.0',
-        schema_version: '1.2.0',
+        schema_version: '1.3.0',
         backup_version: '1.0.0',
         created_at: new Date().toISOString()
       },
@@ -296,7 +335,7 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
 
   // Create temporary in-memory rollback backup
   let tempRollbackBackup = {};
-  const tables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings'];
+  const tables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings', 'suppliers', 'clients', 'purchase_queue'];
 
   try {
     // 1. Parse upload payload
@@ -312,12 +351,12 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
     }
 
     // Schema version checks
-    if (!backupPayload.metadata.schema_version || backupPayload.metadata.schema_version !== '1.2.0') {
+    if (!backupPayload.metadata.schema_version || (backupPayload.metadata.schema_version !== '1.2.0' && backupPayload.metadata.schema_version !== '1.3.0')) {
       throw new Error('Restore rejected: Unsupported database schema version.');
     }
 
     // Expected tables only checks
-    const expectedTables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings'];
+    const expectedTables = ['users', 'products', 'warehouses', 'stock', 'transactions', 'system_settings', 'suppliers', 'clients', 'purchase_queue'];
     const uploadedTables = Object.keys(backupPayload.data);
     for (const tbl of uploadedTables) {
       if (!expectedTables.includes(tbl)) {
@@ -327,12 +366,15 @@ router.post('/restore', requireAdmin, upload.single('backupFile'), async (req, r
 
     // Expected columns only checks
     const validColumns = {
-      users: ['id', 'email', 'password', 'name', 'role', 'google_id', 'created_at'],
-      products: ['id', 'group_name', 'product_name', 'model_no', 'unit', 'description', 'min_stock', 'created_at'],
+      users: ['id', 'email', 'password', 'name', 'role', 'google_id', 'created_at', 'language', 'purchase_team'],
+      products: ['id', 'group_name', 'product_name', 'model_no', 'unit', 'description', 'min_stock', 'created_at', 'lead_time_days', 'safety_stock', 'preferred_supplier_id', 'reorder_quantity', 'purchase_price', 'selling_price'],
       warehouses: ['id', 'name'],
       stock: ['id', 'product_id', 'warehouse_id', 'quantity', 'alert_sent'],
-      transactions: ['id', 'type', 'product_id', 'quantity', 'warehouse_id', 'from_warehouse_id', 'to_warehouse_id', 'user_email', 'narration', 'created_at'],
-      system_settings: ['setting_key', 'setting_value', 'updated_at']
+      transactions: ['id', 'type', 'product_id', 'quantity', 'warehouse_id', 'from_warehouse_id', 'to_warehouse_id', 'user_email', 'narration', 'client_id', 'unit_price', 'total_value', 'created_at'],
+      system_settings: ['setting_key', 'setting_value', 'updated_at'],
+      suppliers: ['id', 'name', 'contact_person', 'phone', 'email', 'created_at'],
+      clients: ['id', 'company_name', 'contact_person', 'phone', 'email', 'gst', 'address', 'city', 'state', 'industry', 'remarks', 'created_at'],
+      purchase_queue: ['id', 'product_id', 'warehouse_id', 'reorder_qty', 'status', 'created_at', 'updated_at']
     };
 
     for (const tbl of uploadedTables) {

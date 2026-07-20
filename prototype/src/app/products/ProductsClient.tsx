@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { apiFetch } from "@/lib/apiFetch";
-import { InventoryDb, Item } from "@/lib/db";
+import { InventoryDb, Item, Warehouse } from "@/lib/db";
+import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import EmptyState from "@/components/EmptyState";
@@ -14,6 +15,7 @@ type SortDir = "asc" | "desc";
 export default function ProductsClient({ initialData, refresh }: { initialData: InventoryDb; refresh: () => void }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { userRole } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     group: "",
@@ -22,7 +24,21 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     description: "",
     minStock: 10,
     unit: "",
+    leadTimeDays: 0,
   });
+
+  // Add Product & Warehouse Modal States
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [warehousesList, setWarehousesList] = useState<Warehouse[]>([]);
+  const [newWhName, setNewWhName] = useState("");
+  const [editingWhId, setEditingWhId] = useState<string | null>(null);
+  const [editingWhName, setEditingWhName] = useState("");
+
+  // Duplicate Model Validation States
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateProducts, setDuplicateProducts] = useState<any[]>([]);
+  const [duplicateFormData, setDuplicateFormData] = useState<typeof formData | null>(null);
 
   // Client-side search, sort, pagination
   const [search, setSearch] = useState("");
@@ -63,7 +79,8 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     model: "",
     description: "",
     minStock: 10,
-    unit: ""
+    unit: "",
+    leadTimeDays: 0,
   });
   const [isEditingSubmitting, setIsEditingSubmitting] = useState(false);
 
@@ -79,22 +96,104 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     };
   }, [showImportModal, showEditModal]);
 
-  // Manual Creation Submit Handler
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Read edit parameter to trigger editing details modal
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const editProductId = params.get('edit');
+      if (editProductId && initialData.items.length > 0) {
+        const prod = initialData.items.find(item => item.id === editProductId);
+        if (prod) {
+          openEditModal(prod);
+          // Clear query parameter after opening
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    }
+  }, [initialData.items]);
+
+  // Fetch warehouses list dynamically
+  const fetchWarehousesList = async () => {
+    try {
+      const res = await apiFetch('/warehouses');
+      if (res.ok) {
+        const json = await res.json();
+        setWarehousesList(json.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load warehouses list:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (showWarehouseModal) {
+      fetchWarehousesList();
+    }
+  }, [showWarehouseModal]);
+
+  // Warehouse CRUD functions
+  const handleAddWarehouse = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newWhName.trim()) return;
+    try {
+      const res = await apiFetch('/warehouses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newWhName.trim() })
+      });
+      if (res.ok) {
+        showToast("Warehouse added successfully", "success");
+        setNewWhName("");
+        fetchWarehousesList();
+        if (refresh) refresh();
+      } else {
+        const data = await res.json();
+        showToast(data.message || "Failed to add warehouse", "error");
+      }
+    } catch (err) {
+      showToast("Error adding warehouse", "error");
+    }
+  };
+
+  const handleRenameWarehouse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWhId || !editingWhName.trim()) return;
+    try {
+      const res = await apiFetch(`/warehouses/${editingWhId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingWhName.trim() })
+      });
+      if (res.ok) {
+        showToast("Warehouse renamed successfully", "success");
+        setEditingWhId(null);
+        fetchWarehousesList();
+        if (refresh) refresh();
+      } else {
+        const data = await res.json();
+        showToast(data.message || "Failed to rename warehouse", "error");
+      }
+    } catch (err) {
+      showToast("Error renaming warehouse", "error");
+    }
+  };
+
+  // Perform final product creation API call
+  const performProductSave = async (dataToSave: typeof formData) => {
     setIsSubmitting(true);
     try {
-      if (!formData.group || !formData.product || !formData.model) {
+      if (!dataToSave.group || !dataToSave.product || !dataToSave.model) {
         throw new Error("Group, Product Name, and Model Number are required");
       }
 
       const payload = {
-        group_name: formData.group.trim(),
-        product_name: formData.product.trim(),
-        model_no: formData.model.trim().toUpperCase(),
-        description: formData.description.trim(),
-        min_stock: formData.minStock,
-        unit: formData.unit.trim() || 'pcs',
+        group_name: dataToSave.group.trim(),
+        product_name: dataToSave.product.trim(),
+        model_no: dataToSave.model.trim().toUpperCase(),
+        description: dataToSave.description.trim(),
+        min_stock: dataToSave.minStock,
+        unit: dataToSave.unit.trim() || 'pcs',
+        lead_time_days: dataToSave.leadTimeDays,
       };
 
       const res = await apiFetch('/products', {
@@ -116,13 +215,51 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
         description: "",
         minStock: 10,
         unit: "",
+        leadTimeDays: 0,
       });
+      setShowAddModal(false);
       if (refresh) refresh();
     } catch (err: any) {
       showToast(err.message || "Failed to add product", "error");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!duplicateFormData) return;
+    setShowDuplicateModal(false);
+    showToast("This model number already exists. Since other product information differs, you may continue.", "success");
+    await performProductSave(duplicateFormData);
+    setDuplicateFormData(null);
+  };
+
+  // Manual Creation Submit Handler
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const enteredModel = formData.model.trim().toUpperCase();
+    const enteredName = formData.product.trim().toLowerCase();
+
+    // Search for matching products by model number in existing items
+    const matches = initialData.items.filter(item => item.model.trim().toUpperCase() === enteredModel);
+
+    if (matches.length > 0) {
+      // Check if any matching product has the exact same name
+      const exactMatch = matches.find(item => item.product.trim().toLowerCase() === enteredName);
+      if (exactMatch) {
+        showToast("Error: A product with this Model Number and Product Name already exists. Exact duplicates are not allowed.", "error");
+        return;
+      }
+
+      // Show popup warning dialog listing matching products
+      setDuplicateProducts(matches);
+      setDuplicateFormData(formData);
+      setShowDuplicateModal(true);
+      return;
+    }
+
+    // Submit normally
+    await performProductSave(formData);
   };
 
   // sorting logic
@@ -423,7 +560,8 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
       model: product.model,
       description: product.description || '',
       minStock: product.minStock ?? 10,
-      unit: product.unit || 'pcs'
+      unit: product.unit || 'pcs',
+      leadTimeDays: product.leadTimeDays ?? 0
     });
     setShowEditModal(true);
   };
@@ -438,7 +576,8 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
       model: editingProduct.model,
       description: editingProduct.description || '',
       minStock: editingProduct.minStock ?? 10,
-      unit: editingProduct.unit || 'pcs'
+      unit: editingProduct.unit || 'pcs',
+      leadTimeDays: editingProduct.leadTimeDays ?? 0
     });
     showToast("Product changes reset to original values", "success");
   };
@@ -460,7 +599,8 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
         model_no: editFormData.model.trim().toUpperCase(),
         description: editFormData.description.trim(),
         min_stock: editFormData.minStock,
-        unit: editFormData.unit.trim() || 'pcs'
+        unit: editFormData.unit.trim() || 'pcs',
+        lead_time_days: editFormData.leadTimeDays
       };
 
       const res = await apiFetch(`/products/${editFormData.id}`, {
@@ -487,125 +627,40 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 className="mb-6">Product Management</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Form Container */}
-        <div className="card h-fit md:col-span-1">
-          <h2 className="mb-4 text-lg font-bold">Add New Product</h2>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div>
-              <label className="form-label mb-1">Group *</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="e.g. Machinery"
-                value={formData.group} 
-                onChange={e => setFormData({ ...formData, group: e.target.value })} 
-              />
-            </div>
-            
-            <div>
-              <label className="form-label mb-1">Product Name *</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="e.g. Semi automatic strapping machine"
-                value={formData.product} 
-                onChange={e => setFormData({ ...formData, product: e.target.value })} 
-              />
-            </div>
-
-            <div>
-              <label className="form-label mb-1">Model Number * (Unique)</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="e.g. PA-60"
-                value={formData.model} 
-                onChange={e => setFormData({ ...formData, model: e.target.value })} 
-              />
-            </div>
-
-            <div>
-              <label className="form-label mb-1">Unit</label>
-              <input 
-                type="text" 
-                placeholder="pcs"
-                value={formData.unit} 
-                onChange={e => setFormData({ ...formData, unit: e.target.value })} 
-              />
-            </div>
-
-            <div>
-              <label className="form-label mb-1">Description</label>
-              <textarea 
-                rows={3}
-                placeholder="Optional details..."
-                value={formData.description} 
-                onChange={e => setFormData({ ...formData, description: e.target.value })} 
-              />
-            </div>
-
-            <div>
-              <label className="form-label mb-1">Minimum Stock Level</label>
-              <input 
-                type="number" 
-                min="0"
-                value={formData.minStock} 
-                onChange={e => setFormData({ ...formData, minStock: parseInt(e.target.value) || 0 })} 
-              />
-            </div>
-
-            <button 
-              type="submit" 
-              className="btn-primary mt-2" 
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Saving..." : "Save Product"}
+      
+      {/* Top Action Area */}
+      <div className="card mb-6" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Product Management</h1>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button onClick={() => setShowAddModal(true)} className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 600 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Add One Product
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn-excel-import" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 600 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><polyline points="9 15 12 12 15 15" /></svg>
+            Add Many Products
+          </button>
+          <button onClick={handleExportExcel} className="btn-excel-export" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 600 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="12" x2="12" y2="18" /><polyline points="15 15 12 18 9 15" /></svg>
+            Export Excel
+          </button>
+          {userRole === 'Admin' && (
+            <button onClick={() => setShowWarehouseModal(true)} className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 600 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="M15 3v18" /><path d="M3 9h18" /><path d="M3 15h18" /></svg>
+              Manage Warehouses
             </button>
-
-            <div className="excel-btn-container" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button 
-                type="button" 
-                className="btn-excel-import" 
-                style={{ flex: 1 }}
-                onClick={() => setShowImportModal(true)}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="18" x2="12" y2="12" />
-                  <polyline points="9 15 12 12 15 15" />
-                </svg>
-                <span>Add Through Excel</span>
-              </button>
-              <button 
-                type="button" 
-                className="btn-excel-export" 
-                style={{ flex: 1 }}
-                onClick={handleExportExcel}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="12" x2="12" y2="18" />
-                  <polyline points="15 15 12 18 9 15" />
-                </svg>
-                <span>Export Excel</span>
-              </button>
-            </div>
-          </form>
+          )}
         </div>
+      </div>
 
-        {/* Catalog Table Container */}
-        <div className="card md:col-span-2" style={{ padding: 0 }}>
-          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <h2 className="text-lg font-bold">Product Catalog</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
-                Total Products: {initialData.items.length}
-              </p>
+      {/* Catalog Table Container */}
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 className="text-lg font-bold">Product Catalog</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
+              Total Products: {initialData.items.length}
+            </p>
             </div>
             <div style={{ width: '250px' }}>
               <input
@@ -745,7 +800,255 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
             </div>
           </div>
         </div>
-      </div>
+
+        {/* Add One Product Modal */}
+        {showAddModal && (
+          <div style={modalOverlayStyle}>
+            <div style={{ ...modalContentStyle, maxWidth: '500px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Add New Product</h2>
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddModal(false)} 
+                  style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--foreground-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                >
+                  &times;
+                </button>
+              </div>
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div>
+                  <label style={labelStyle}>Group *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. Machinery"
+                    value={formData.group} 
+                    onChange={e => setFormData({ ...formData, group: e.target.value })} 
+                    style={inputStyle}
+                  />
+                </div>
+                
+                <div>
+                  <label style={labelStyle}>Product Name *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. Semi automatic strapping machine"
+                    value={formData.product} 
+                    onChange={e => setFormData({ ...formData, product: e.target.value })} 
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Model Number *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. PA-60"
+                    value={formData.model} 
+                    onChange={e => setFormData({ ...formData, model: e.target.value })} 
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Unit</label>
+                  <input 
+                    type="text" 
+                    placeholder="pcs"
+                    value={formData.unit} 
+                    onChange={e => setFormData({ ...formData, unit: e.target.value })} 
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Minimum Stock Level</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={formData.minStock} 
+                    onChange={e => setFormData({ ...formData, minStock: parseInt(e.target.value) || 0 })} 
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Lead Time (Days)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={formData.leadTimeDays} 
+                    onChange={e => {
+                      const val = parseInt(e.target.value);
+                      setFormData({ ...formData, leadTimeDays: isNaN(val) ? 0 : val });
+                    }} 
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Description</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="Optional details..."
+                    value={formData.description} 
+                    onChange={e => setFormData({ ...formData, description: e.target.value })} 
+                    style={{ ...inputStyle, minHeight: '60px' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                    {isSubmitting ? "Saving..." : "Save Product"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Warehouse Manager Modal */}
+        {showWarehouseModal && (
+          <div style={modalOverlayStyle}>
+            <div style={{ ...modalContentStyle, maxWidth: '500px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Warehouse Management</h2>
+                <button 
+                  type="button" 
+                  onClick={() => setShowWarehouseModal(false)} 
+                  style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--foreground-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                >
+                  &times;
+                </button>
+              </div>
+              
+              {/* Add New Warehouse Section */}
+              <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--foreground)' }}>Add New Warehouse</h3>
+                <form onSubmit={handleAddWarehouse} style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. Storage Room A"
+                    value={newWhName} 
+                    onChange={e => setNewWhName(e.target.value)} 
+                    style={{ ...inputStyle, padding: '0.5rem' }}
+                  />
+                  <button type="submit" className="btn-primary" style={{ padding: '0.5rem 1rem' }}>Add</button>
+                </form>
+              </div>
+
+              {/* Active Warehouses Section */}
+              <div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--foreground)' }}>Active Warehouses</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto' }}>
+                  {warehousesList.length === 0 ? (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)', textAlign: 'center' }}>No warehouses registered.</p>
+                  ) : (
+                    warehousesList.map(wh => (
+                      <div key={wh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                        {editingWhId === wh.id ? (
+                          <form onSubmit={handleRenameWarehouse} style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                            <input 
+                              type="text" 
+                              required 
+                              value={editingWhName} 
+                              onChange={e => setEditingWhName(e.target.value)} 
+                              style={{ ...inputStyle, padding: '0.25rem 0.5rem', fontSize: '0.875rem', flex: 1 }} 
+                            />
+                            <button type="submit" className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>Save</button>
+                            <button type="button" className="btn-secondary" onClick={() => setEditingWhId(null)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>Cancel</button>
+                          </form>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{wh.name}</span>
+                            <button 
+                              type="button" 
+                              className="btn-secondary" 
+                              onClick={() => {
+                                setEditingWhId(wh.id);
+                                setEditingWhName(wh.name);
+                              }}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', fontWeight: 600 }}
+                            >
+                              Rename
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowWarehouseModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Model Warning Modal */}
+        {showDuplicateModal && (
+          <div style={modalOverlayStyle}>
+            <div style={{ ...modalContentStyle, maxWidth: '650px' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#d97706', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                ⚠️ Existing Model Number Found
+              </h2>
+              <p style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--foreground)' }}>
+                The model number you entered already exists in the system. Below are the matching products:
+              </p>
+              <div style={{ overflowX: 'auto', marginBottom: '1.5rem', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Model</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Product Name</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Category</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Brand</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Supplier</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Warehouse & Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {duplicateProducts.map((p, idx) => {
+                      // Compile stock list
+                      const stockList = initialData.warehouses.map(w => {
+                        const qty = p.stock?.[w.id] || 0;
+                        return qty > 0 ? `${w.name}: ${qty} pcs` : null;
+                      }).filter(Boolean);
+                      const stockStr = stockList.length > 0 ? stockList.join(', ') : 'No stock';
+
+                      return (
+                        <tr key={idx} style={{ borderBottom: idx < duplicateProducts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                          <td style={{ padding: '0.5rem 0.75rem', fontWeight: 500 }}>{p.model}</td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>{p.product}</td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>{p.group}</td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>N/A</td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>{p.preferredSupplierName || 'None'}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: 'var(--foreground-muted)' }}>{stockStr}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowDuplicateModal(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" onClick={handleConfirmDuplicate}>
+                  Continue Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Excel Import Modal */}
       {showImportModal && (
@@ -1089,6 +1392,24 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
                   min="0"
                   value={editFormData.minStock} 
                   onChange={e => setEditFormData({ ...editFormData, minStock: parseInt(e.target.value) || 0 })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle} title="Number of days supplier takes to deliver after placing order.">
+                  Lead Time (Days) <span style={{ cursor: 'help', color: 'var(--foreground-muted)' }}>ℹ️</span>
+                </label>
+                <input 
+                  type="number" 
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={editFormData.leadTimeDays} 
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    setEditFormData({ ...editFormData, leadTimeDays: isNaN(val) ? 0 : val });
+                  }}
                   style={inputStyle}
                 />
               </div>

@@ -63,6 +63,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState<'All' | 'Alerts' | 'Transactions'>('All');
@@ -79,7 +80,7 @@ export default function Navbar() {
   useEffect(() => {
     const fetchBranding = async () => {
       try {
-        const res = await fetch('http://localhost:5000/auth/branding');
+        const res = await fetch(`${baseUrl}/auth/branding`);
         const json = await res.json();
         if (json.success && json.data) {
           setLogoUrl(json.data.logoUrl || null);
@@ -241,7 +242,7 @@ export default function Navbar() {
           <div className="desktop-navbar-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {userRole === 'Basic User' && logoUrl && (
               <img 
-                src={`http://localhost:5000${logoUrl}`} 
+                src={`${baseUrl}${logoUrl}`} 
                 alt="Branding Logo" 
                 style={{ height: '24px', width: 'auto', objectFit: 'contain', marginRight: '0.25rem' }} 
               />
@@ -255,7 +256,7 @@ export default function Navbar() {
           <div className="mobile-navbar-left" style={{ display: 'none', alignItems: 'center', gap: '0.5rem' }}>
             {logoUrl ? (
               <img 
-                src={`http://localhost:5000${logoUrl}`} 
+                src={`${baseUrl}${logoUrl}`} 
                 alt="Logo" 
                 style={{ height: '24px', width: 'auto', objectFit: 'contain' }}
               />
@@ -502,7 +503,7 @@ export default function Navbar() {
           >
             {profileImage ? (
               <img 
-                src={profileImage.startsWith('http') ? profileImage : `http://localhost:5000${profileImage}`} 
+                src={profileImage.startsWith('http') ? profileImage : `${baseUrl}${profileImage}`} 
                 alt="Profile" 
                 style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
               />

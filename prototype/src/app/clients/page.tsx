@@ -7,6 +7,8 @@ import { useAuth } from '@/components/AuthProvider';
 import { useLanguage } from '@/components/LanguageContext';
 import Link from 'next/link';
 import { MobileCard } from '@/components/MobileCard';
+import * as XLSX from 'xlsx';
+import { validatePhone, validateEmail, sanitizeEmail } from "@/utils/validation";
 
 interface Client {
   id: number;
@@ -60,8 +62,35 @@ export default function ClientsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingClient, setViewingClient] = useState<Client | null>(null);
+  const [importStep, setImportStep] = useState<'guide' | 'upload' | 'summary'>('guide');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [validationPreview, setValidationPreview] = useState<{
+    totalRows: number;
+    validRowsCount: number;
+    dbDuplicatesCount: number;
+    fileDuplicatesCount: number;
+    missingDataCount: number;
+    rows: any[];
+    errors: string[];
+    failedReportData: any[];
+  } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    total: number;
+    imported: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
+  } | null>(null);
+
   const [activeClient, setActiveClient] = useState<Partial<Client> | null>(null);
-  const [importText, setImportText] = useState('');
+
+  const handleOpenView = (client: Client) => {
+    setViewingClient(client);
+    setShowViewModal(true);
+  };
 
   // Form input states
   const [formCompany, setFormCompany] = useState('');
@@ -74,6 +103,7 @@ export default function ClientsPage() {
   const [formState, setFormState] = useState('');
   const [formIndustry, setFormIndustry] = useState('Manufacturing');
   const [formRemarks, setFormRemarks] = useState('');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const industries = ['Manufacturing', 'Technology', 'Healthcare', 'Automotive', 'Logistics', 'Retail', 'Wholesale', 'Other'];
 
@@ -146,6 +176,7 @@ export default function ClientsPage() {
     setFormIndustry('Manufacturing');
     setFormRemarks('');
     setActiveClient(null);
+    setFormErrors({});
   };
 
   const handleOpenAdd = () => {
@@ -170,7 +201,33 @@ export default function ClientsPage() {
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formCompany.trim()) return showToast('Company Name is required', 'error');
+    
+    // Validations
+    const tempErrors: Record<string, string> = {};
+    if (formCompany.trim().length < 2) {
+      tempErrors.company = 'Company Name must be at least 2 characters.';
+    }
+    if (formContact.trim().length < 2) {
+      tempErrors.contact = 'Contact Person must be at least 2 characters.';
+    }
+    if (!validatePhone(formPhone)) {
+      tempErrors.phone = 'Invalid phone number format (7 to 15 digits).';
+    }
+    let sanitizedEmail = '';
+    if (formEmail.trim() !== '') {
+      if (!validateEmail(formEmail)) {
+        tempErrors.email = 'Invalid email address format.';
+      } else {
+        sanitizedEmail = sanitizeEmail(formEmail);
+      }
+    }
+
+    if (Object.keys(tempErrors).length > 0) {
+      setFormErrors(tempErrors);
+      showToast('Please fix form validation errors.', 'error');
+      return;
+    }
+    setFormErrors({});
 
     try {
       const res = await apiFetch('/clients', {
@@ -179,8 +236,7 @@ export default function ClientsPage() {
           company_name: formCompany.trim(),
           contact_person: formContact.trim(),
           phone: formPhone.trim(),
-          email: formEmail.trim(),
-          gst: formGst.trim(),
+          email: sanitizedEmail || null,
           address: formAddress.trim(),
           city: formCity.trim(),
           state: formState.trim(),
@@ -206,7 +262,33 @@ export default function ClientsPage() {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient?.id) return;
-    if (!formCompany.trim()) return showToast('Company Name is required', 'error');
+
+    // Validations
+    const tempErrors: Record<string, string> = {};
+    if (formCompany.trim().length < 2) {
+      tempErrors.company = 'Company Name must be at least 2 characters.';
+    }
+    if (formContact.trim().length < 2) {
+      tempErrors.contact = 'Contact Person must be at least 2 characters.';
+    }
+    if (!validatePhone(formPhone)) {
+      tempErrors.phone = 'Invalid phone number format (7 to 15 digits).';
+    }
+    let sanitizedEmail = '';
+    if (formEmail.trim() !== '') {
+      if (!validateEmail(formEmail)) {
+        tempErrors.email = 'Invalid email address format.';
+      } else {
+        sanitizedEmail = sanitizeEmail(formEmail);
+      }
+    }
+
+    if (Object.keys(tempErrors).length > 0) {
+      setFormErrors(tempErrors);
+      showToast('Please fix form validation errors.', 'error');
+      return;
+    }
+    setFormErrors({});
 
     try {
       const res = await apiFetch(`/clients/${activeClient.id}`, {
@@ -215,8 +297,7 @@ export default function ClientsPage() {
           company_name: formCompany.trim(),
           contact_person: formContact.trim(),
           phone: formPhone.trim(),
-          email: formEmail.trim(),
-          gst: formGst.trim(),
+          email: sanitizedEmail || null,
           address: formAddress.trim(),
           city: formCity.trim(),
           state: formState.trim(),
@@ -264,50 +345,333 @@ export default function ClientsPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
-          const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' });
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `Clients_Directory_${new Date().toISOString().split('T')[0]}.json`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
+          const exportRows = json.data.map((c: any) => ({
+            'Client Name': c.company_name,
+            'Contact Person': c.contact_person || 'N/A',
+            'Phone': c.phone || 'N/A',
+            'Email': c.email || 'N/A',
+            'Address': c.address || 'N/A',
+            'City': c.city || 'N/A',
+            'State': c.state || 'N/A',
+            'Industry': c.industry || 'Other',
+            'Remarks': c.remarks || 'N/A',
+            'Status': c.dynamic_status,
+            'Last Purchase': c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : 'No purchases yet',
+            'Created Date': new Date(c.created_at).toLocaleDateString()
+          }));
+
+          const worksheet = XLSX.utils.json_to_sheet(exportRows);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Clients Directory');
+          XLSX.writeFile(workbook, `Clients_Directory_${new Date().toISOString().split('T')[0]}.xlsx`);
           showToast('Clients exported successfully.', 'success');
         }
       }
-    } catch (e) {
-      showToast('Export failed.', 'error');
+    } catch (e: any) {
+      showToast('Export failed: ' + e.message, 'error');
     }
   };
 
-  const handleImportSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!importText.trim()) return showToast('Please enter clients JSON array', 'error');
+  const handleDownloadTemplate = () => {
+    try {
+      const headers = ['Client Name', 'Contact Person', 'Phone', 'Email', 'Address', 'City', 'State', 'Industry', 'Remarks'];
+      const sampleRow = {
+        'Client Name': 'Acme Corp',
+        'Contact Person': 'Jane Doe',
+        'Phone': '9876543210',
+        'Email': 'jane@acme.com',
+        'Address': '123 Business St',
+        'City': 'Mumbai',
+        'State': 'Maharashtra',
+        'Industry': 'Manufacturing',
+        'Remarks': 'Preferred client'
+      };
+
+      const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Client Import Template');
+      XLSX.writeFile(workbook, 'client_import_template.xlsx');
+      showToast('Template downloaded successfully.', 'success');
+    } catch (e: any) {
+      showToast('Template download failed: ' + e.message, 'error');
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setSelectedFile(file);
+    if (!file) {
+      setValidationPreview(null);
+      return;
+    }
 
     try {
-      const parsed = JSON.parse(importText.trim());
-      if (!Array.isArray(parsed)) {
-        return showToast('Import format must be a JSON array of clients', 'error');
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+      if (json.length === 0) {
+        throw new Error("Excel file is empty");
       }
 
+      const headers = json[0].map(h => String(h || '').trim());
+      const required = ['Client Name'];
+      const missing = required.filter(r => !headers.includes(r));
+      
+      if (missing.length > 0) {
+        setValidationPreview({
+          totalRows: 0,
+          validRowsCount: 0,
+          dbDuplicatesCount: 0,
+          fileDuplicatesCount: 0,
+          missingDataCount: 0,
+          rows: [],
+          errors: [`Missing required columns: ${missing.join(', ')}`],
+          failedReportData: []
+        });
+        return;
+      }
+
+      const headerIndices = {
+        companyName: headers.indexOf('Client Name'),
+        contactPerson: headers.indexOf('Contact Person'),
+        phone: headers.indexOf('Phone'),
+        email: headers.indexOf('Email'),
+        address: headers.indexOf('Address'),
+        city: headers.indexOf('City'),
+        state: headers.indexOf('State'),
+        industry: headers.indexOf('Industry'),
+        remarks: headers.indexOf('Remarks'),
+      };
+
+      // Load all existing client names from database to check for duplicates
+      const allClientsRes = await apiFetch('/clients/all');
+      let existingNames = new Set<string>();
+      if (allClientsRes.ok) {
+        const resJson = await allClientsRes.json();
+        if (resJson.success && Array.isArray(resJson.data)) {
+          existingNames = new Set(resJson.data.map((c: any) => c.company_name.trim().toLowerCase()));
+        }
+      }
+
+      const seenInFile = new Set<string>();
+      let totalRows = 0;
+      let validRowsCount = 0;
+      let dbDuplicatesCount = 0;
+      let fileDuplicatesCount = 0;
+      let missingDataCount = 0;
+      const errors: string[] = [];
+      const parsedRows: any[] = [];
+      const failedReportData: any[] = [];
+
+      for (let i = 1; i < json.length; i++) {
+        const row = json[i];
+        if (!row || row.length === 0) continue;
+        const isRowEmpty = row.every(cell => cell === undefined || cell === null || String(cell).trim() === '');
+        if (isRowEmpty) continue;
+
+        totalRows++;
+        const rowNum = i + 1;
+
+        const companyNameVal = row[headerIndices.companyName];
+        const contactPersonVal = headerIndices.contactPerson !== -1 ? row[headerIndices.contactPerson] : null;
+        const phoneVal = headerIndices.phone !== -1 ? row[headerIndices.phone] : null;
+        const emailVal = headerIndices.email !== -1 ? row[headerIndices.email] : null;
+        const addressVal = headerIndices.address !== -1 ? row[headerIndices.address] : null;
+        const cityVal = headerIndices.city !== -1 ? row[headerIndices.city] : null;
+        const stateVal = headerIndices.state !== -1 ? row[headerIndices.state] : null;
+        const industryVal = headerIndices.industry !== -1 ? row[headerIndices.industry] : null;
+        const remarksVal = headerIndices.remarks !== -1 ? row[headerIndices.remarks] : null;
+
+        if (companyNameVal === undefined || companyNameVal === null || String(companyNameVal).trim() === '') {
+          errors.push(`Row ${rowNum}: Client Name is missing.`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': 'N/A',
+            'Contact Person': contactPersonVal || '',
+            'Error Reason': 'Client Name is required and cannot be empty.'
+          });
+          missingDataCount++;
+          continue;
+        }
+
+        const companyName = String(companyNameVal).trim();
+        const normName = companyName.toLowerCase();
+
+        if (companyName.length < 2) {
+          errors.push(`Row ${rowNum}: Company Name must be at least 2 characters.`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': companyName,
+            'Contact Person': contactPersonVal || '',
+            'Error Reason': 'Company Name must be at least 2 characters.'
+          });
+          missingDataCount++;
+          continue;
+        }
+
+        const contactPerson = contactPersonVal ? String(contactPersonVal).trim() : '';
+        if (!contactPerson || contactPerson.length < 2) {
+          errors.push(`Row ${rowNum}: Contact Person name must be at least 2 characters.`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': companyName,
+            'Contact Person': contactPerson || 'N/A',
+            'Error Reason': 'Contact Person name must be at least 2 characters.'
+          });
+          missingDataCount++;
+          continue;
+        }
+
+        const phone = phoneVal ? String(phoneVal).trim() : '';
+        if (!phone || !validatePhone(phone)) {
+          errors.push(`Row ${rowNum}: Invalid phone number format "${phone}".`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': companyName,
+            'Contact Person': contactPerson,
+            'Error Reason': 'Invalid phone number format (7 to 15 digits).'
+          });
+          missingDataCount++;
+          continue;
+        }
+
+        const email = emailVal ? String(emailVal).trim() : '';
+        let sanitizedImportEmail = null;
+        if (email) {
+          if (!validateEmail(email)) {
+            errors.push(`Row ${rowNum}: Invalid email address format "${email}".`);
+            failedReportData.push({
+              'Row Number': rowNum,
+              'Client Name': companyName,
+              'Contact Person': contactPerson,
+              'Error Reason': 'Invalid email address format.'
+            });
+            missingDataCount++;
+            continue;
+          }
+          sanitizedImportEmail = sanitizeEmail(email);
+        }
+
+        // Duplicate in file check
+        if (seenInFile.has(normName)) {
+          errors.push(`Row ${rowNum}: Duplicate Client Name "${companyName}" found in the upload file.`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': companyName,
+            'Contact Person': contactPerson,
+            'Error Reason': 'Duplicate Client Name in the upload file.'
+          });
+          fileDuplicatesCount++;
+          continue;
+        }
+        seenInFile.add(normName);
+
+        // Duplicate in DB check
+        if (existingNames.has(normName)) {
+          errors.push(`Row ${rowNum}: Client Name "${companyName}" already exists in database. (Will be skipped).`);
+          failedReportData.push({
+            'Row Number': rowNum,
+            'Client Name': companyName,
+            'Contact Person': contactPerson,
+            'Error Reason': 'Client already registered in system.'
+          });
+          dbDuplicatesCount++;
+          continue;
+        }
+
+        // Row is valid
+        validRowsCount++;
+        parsedRows.push({
+          company_name: companyName,
+          contact_person: contactPerson,
+          phone: phone,
+          email: sanitizedImportEmail,
+          address: addressVal ? String(addressVal).trim() : null,
+          city: cityVal ? String(cityVal).trim() : null,
+          state: stateVal ? String(stateVal).trim() : null,
+          industry: industryVal ? String(industryVal).trim() : 'Other',
+          remarks: remarksVal ? String(remarksVal).trim() : null
+        });
+      }
+
+      setValidationPreview({
+        totalRows,
+        validRowsCount,
+        dbDuplicatesCount,
+        fileDuplicatesCount,
+        missingDataCount,
+        rows: parsedRows,
+        errors,
+        failedReportData
+      });
+    } catch (err: any) {
+      setValidationPreview({
+        totalRows: 0,
+        validRowsCount: 0,
+        dbDuplicatesCount: 0,
+        fileDuplicatesCount: 0,
+        missingDataCount: 0,
+        rows: [],
+        errors: [`Failed to parse Excel file: ${err.message}`],
+        failedReportData: []
+      });
+    }
+  };
+
+  const handleImport = async () => {
+    if (!validationPreview || validationPreview.rows.length === 0) return;
+    setImporting(true);
+    try {
       const res = await apiFetch('/clients/import', {
         method: 'POST',
-        body: JSON.stringify({ clients: parsed })
+        body: JSON.stringify({ clients: validationPreview.rows }),
       });
+
       const json = await res.json();
-      if (res.ok && json.success) {
-        showToast(json.message, 'success');
-        setShowImportModal(false);
-        setImportText('');
-        loadClients();
-        loadStats();
-      } else {
-        showToast(json.message || 'Import failed.', 'error');
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to import clients');
       }
+
+      setImportResult({
+        total: validationPreview.totalRows,
+        imported: validationPreview.rows.length,
+        skipped: validationPreview.dbDuplicatesCount,
+        failed: validationPreview.missingDataCount + validationPreview.fileDuplicatesCount,
+        errors: json.errors || []
+      });
+      setImportStep('summary');
+      showToast("Clients imported successfully", "success");
+      loadClients();
+      loadStats();
     } catch (err: any) {
-      showToast(`Invalid JSON format: ${err.message}`, 'error');
+      showToast(err.message || "Failed to import clients", "error");
+    } finally {
+      setImporting(false);
     }
+  };
+
+  const handleDownloadErrorReport = () => {
+    if (!validationPreview || validationPreview.failedReportData.length === 0) return;
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(validationPreview.failedReportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Import Errors');
+      XLSX.writeFile(workbook, 'client_import_errors.xlsx');
+      showToast('Error report downloaded.', 'success');
+    } catch (err: any) {
+      showToast('Failed to download error report: ' + err.message, 'error');
+    }
+  };
+
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportStep('guide');
+    setSelectedFile(null);
+    setValidationPreview(null);
+    setImportResult(null);
   };
 
   // Helper status color badges
@@ -421,48 +785,42 @@ export default function ClientsPage() {
       ) : (
         <>
           {/* Desktop Table Wrapper */}
-          <div className="desktop-table-wrapper card" style={{ overflowX: 'auto', padding: 0 }}>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div className="desktop-table-wrapper card" style={{ padding: 0, overflowX: 'hidden' }}>
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                  <th style={thStyle}>Company Name</th>
-                  <th style={thStyle}>Contact Person</th>
-                  <th style={thStyle}>City & State</th>
-                  <th style={thStyle}>Industry</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>Total Purchases</th>
-                  <th style={thStyle}>Lifetime Revenue</th>
-                  <th style={thStyle}>Actions</th>
+                  <th style={{ ...thStyle, width: '30%' }}>Company</th>
+                  <th style={{ ...thStyle, width: '20%' }}>Client</th>
+                  <th style={{ ...thStyle, width: '15%' }}>Phone</th>
+                  <th style={{ ...thStyle, width: '10%' }}>Status</th>
+                  <th style={{ ...thStyle, width: '15%' }}>Last Active</th>
+                  <th style={{ ...thStyle, width: '10%' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {clients.map(client => (
                   <tr key={client.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
-                    <td style={tdStyle}>
-                      <Link href={`/clients/${client.id}`} style={{ fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>
-                        {client.company_name}
-                      </Link>
+                    <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--primary)', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      {client.company_name}
                     </td>
-                    <td style={tdStyle}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{client.contact_person || 'N/A'}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>{client.email || ''}</div>
+                    <td style={{ ...tdStyle, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      {client.contact_person || 'N/A'}
                     </td>
-                    <td style={tdStyle}>{client.city ? `${client.city}, ${client.state || ''}` : 'N/A'}</td>
-                    <td style={tdStyle}><span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>{client.industry || 'Other'}</span></td>
-                    <td style={tdStyle}>
-                      <span className="badge" style={getStatusBadgeStyle(client.dynamic_status)}>
+                    <td style={{ ...tdStyle, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      {client.phone || 'N/A'}
+                    </td>
+                    <td style={{ ...tdStyle, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      <span className="badge" style={{ ...getStatusBadgeStyle(client.dynamic_status), padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, display: 'inline-block' }}>
                         {client.dynamic_status}
                       </span>
                     </td>
-                    <td style={tdStyle}>{client.total_orders} Orders</td>
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>₹{parseFloat(String(client.lifetime_revenue)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ ...tdStyle, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal', fontSize: '0.85rem' }}>
+                      {client.last_purchase_at ? new Date(client.last_purchase_at).toLocaleDateString() : 'No transactions'}
+                    </td>
                     <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <Link href={`/clients/${client.id}`} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none' }}>
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleOpenView(client)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                           View
-                        </Link>
-                        <button onClick={() => handleOpenEdit(client)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
-                          Edit
                         </button>
                         {userRole === 'Admin' && (
                           <button onClick={() => handleDeleteClient(client.id, client.company_name)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
@@ -483,36 +841,36 @@ export default function ClientsPage() {
               <MobileCard
                 key={client.id}
                 title={
-                  <Link href={`/clients/${client.id}`} style={{ fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>
                     {client.company_name}
-                  </Link>
+                  </span>
                 }
                 primaryInfo={
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <div><strong>Contact:</strong> {client.contact_person || 'N/A'}</div>
-                    <div><strong>Industry:</strong> {client.industry || 'Other'}</div>
-                    <div><strong>Total Orders:</strong> {client.total_orders}</div>
-                    <div><strong>Lifetime Revenue:</strong> ₹{parseFloat(String(client.lifetime_revenue)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                    <div><strong>Client Name:</strong> {client.contact_person || 'N/A'}</div>
+                    <div><strong>Phone:</strong> {client.phone || 'N/A'}</div>
                   </div>
                 }
                 secondaryInfo={
-                  <div>
-                    {client.city ? `${client.city}, ${client.state || ''}` : ''} {client.email ? `• ${client.email}` : ''}
+                  <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>
+                    <strong>Last Active:</strong> {client.last_purchase_at ? new Date(client.last_purchase_at).toLocaleDateString() : 'No transactions'}
                   </div>
                 }
                 statusBadge={
-                  <span className="badge" style={getStatusBadgeStyle(client.dynamic_status)}>
+                  <span className="badge" style={{ ...getStatusBadgeStyle(client.dynamic_status), padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, display: 'inline-block' }}>
                     {client.dynamic_status}
                   </span>
                 }
                 actions={
                   <>
-                    <Link href={`/clients/${client.id}`} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none' }}>
-                      View Profile
-                    </Link>
-                    <button onClick={() => handleOpenEdit(client)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
-                      Edit
+                    <button onClick={() => handleOpenView(client)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                      View
                     </button>
+                    {userRole === 'Admin' && (
+                      <button onClick={() => handleDeleteClient(client.id, client.company_name)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                        Delete
+                      </button>
+                    )}
                   </>
                 }
               />
@@ -577,33 +935,31 @@ export default function ClientsPage() {
                 <div>
                   <label style={labelStyle}>Company Name *</label>
                   <input type="text" required value={formCompany} onChange={e => setFormCompany(e.target.value)} style={inputStyle} />
+                  {formErrors.company && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.company}</div>}
                 </div>
                 <div>
-                  <label style={labelStyle}>Contact Person</label>
-                  <input type="text" value={formContact} onChange={e => setFormContact(e.target.value)} style={inputStyle} />
+                  <label style={labelStyle}>Contact Person *</label>
+                  <input type="text" required value={formContact} onChange={e => setFormContact(e.target.value)} style={inputStyle} />
+                  {formErrors.contact && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.contact}</div>}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={labelStyle}>Phone Number</label>
-                  <input type="text" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={inputStyle} />
+                  <label style={labelStyle}>Phone Number *</label>
+                  <input type="text" required value={formPhone} onChange={e => setFormPhone(e.target.value)} style={inputStyle} />
+                  {formErrors.phone && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.phone}</div>}
                 </div>
                 <div>
                   <label style={labelStyle}>Email Address</label>
                   <input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={inputStyle} />
+                  {formErrors.email && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.email}</div>}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>GST Number</label>
-                  <input type="text" placeholder="e.g. 22AAAAA0000A1Z5" value={formGst} onChange={e => setFormGst(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Industry Category</label>
-                  <select value={formIndustry} onChange={e => setFormIndustry(e.target.value)} style={inputStyle}>
-                    {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label style={labelStyle}>Industry Category</label>
+                <select value={formIndustry} onChange={e => setFormIndustry(e.target.value)} style={inputStyle}>
+                  {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                </select>
               </div>
               <div>
                 <label style={labelStyle}>Client Office Address</label>
@@ -645,33 +1001,31 @@ export default function ClientsPage() {
                 <div>
                   <label style={labelStyle}>Company Name *</label>
                   <input type="text" required value={formCompany} onChange={e => setFormCompany(e.target.value)} style={inputStyle} />
+                  {formErrors.company && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.company}</div>}
                 </div>
                 <div>
-                  <label style={labelStyle}>Contact Person</label>
-                  <input type="text" value={formContact} onChange={e => setFormContact(e.target.value)} style={inputStyle} />
+                  <label style={labelStyle}>Contact Person *</label>
+                  <input type="text" required value={formContact} onChange={e => setFormContact(e.target.value)} style={inputStyle} />
+                  {formErrors.contact && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.contact}</div>}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={labelStyle}>Phone Number</label>
-                  <input type="text" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={inputStyle} />
+                  <label style={labelStyle}>Phone Number *</label>
+                  <input type="text" required value={formPhone} onChange={e => setFormPhone(e.target.value)} style={inputStyle} />
+                  {formErrors.phone && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.phone}</div>}
                 </div>
                 <div>
                   <label style={labelStyle}>Email Address</label>
                   <input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={inputStyle} />
+                  {formErrors.email && <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.email}</div>}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>GST Number</label>
-                  <input type="text" value={formGst} onChange={e => setFormGst(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Industry Category</label>
-                  <select value={formIndustry} onChange={e => setFormIndustry(e.target.value)} style={inputStyle}>
-                    {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label style={labelStyle}>Industry Category</label>
+                <select value={formIndustry} onChange={e => setFormIndustry(e.target.value)} style={inputStyle}>
+                  {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                </select>
               </div>
               <div>
                 <label style={labelStyle}>Client Office Address</label>
@@ -700,30 +1054,259 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Bulk JSON Import Modal */}
+      {/* Bulk Excel Import Stepper Modal */}
       {showImportModal && (
         <div style={modalOverlayStyle}>
-          <div style={{ ...modalContentStyle, maxWidth: '600px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-              <h3 style={{ fontWeight: 800 }}>Bulk Import Clients</h3>
-              <button onClick={() => setShowImportModal(false)} style={closeBtnStyle}>✕</button>
+          <div style={{ ...modalContentStyle, maxWidth: '650px', width: '90%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+              <h3 style={{ fontWeight: 800, margin: 0 }}>📥 Bulk Client Import Wizard</h3>
+              <button onClick={closeImportModal} style={closeBtnStyle}>✕</button>
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginBottom: '1rem' }}>
-              Paste a JSON array containing client records. Example format:<br />
-              <code>[{"{"} "company_name": "Acme Corp", "contact_person": "Jane", "email": "jane@acme.com", "phone": "12345", "gst": "22AAAAA0000A1Z5", "city": "Mumbai", "industry": "Retail" {"}"}]</code>
-            </p>
-            <form onSubmit={handleImportSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <textarea 
-                value={importText} 
-                onChange={e => setImportText(e.target.value)} 
-                placeholder="[{ ... }]"
-                style={{ ...inputStyle, minHeight: '200px', fontFamily: 'monospace', fontSize: '0.8rem' }}
-              />
-              <div style={formActionsStyle}>
-                <button type="button" onClick={() => setShowImportModal(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Import Array</button>
+
+            {/* Stepper Progress Bar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: importStep === 'guide' ? 'bold' : 'normal', color: importStep === 'guide' ? 'var(--primary)' : 'inherit', fontSize: '0.8rem' }}>
+                1. Download Template {importStep !== 'guide' && '✅'}
               </div>
-            </form>
+              <div style={{ fontWeight: importStep === 'upload' ? 'bold' : 'normal', color: importStep === 'upload' ? 'var(--primary)' : 'inherit', fontSize: '0.8rem' }}>
+                2. Upload & Validate {importStep === 'summary' && '✅'}
+              </div>
+              <div style={{ fontWeight: importStep === 'summary' ? 'bold' : 'normal', color: importStep === 'summary' ? 'var(--primary)' : 'inherit', fontSize: '0.8rem' }}>
+                3. Import Summary
+              </div>
+            </div>
+
+            {/* Step 1: Guide */}
+            {importStep === 'guide' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <p style={{ fontSize: '0.85rem', color: '#475569', margin: 0 }}>
+                  To ensure smooth data mapping, please download the standard Excel template, populate your client list, and upload it in the next step.
+                </p>
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1rem', borderRadius: '6px', fontSize: '0.8rem', color: '#166534' }}>
+                  <strong>Format Requirements:</strong>
+                  <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0 }}>
+                    <li><strong>Client Name</strong> is required and must be unique.</li>
+                    <li>GST must be valid alphanumeric character sequence.</li>
+                    <li>Industry can be Manufacturing, Retail, Tech, Healthcare, etc.</li>
+                  </ul>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={closeImportModal} className="btn-secondary">Cancel</button>
+                  <button type="button" onClick={handleDownloadTemplate} className="btn-secondary" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    📄 Download Excel Template
+                  </button>
+                  <button type="button" onClick={() => setImportStep('upload')} className="btn-primary">
+                    Next: Choose File ➔
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Upload & Validate */}
+            {importStep === 'upload' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ ...labelStyle, marginBottom: '0.5rem' }}>Select spreadsheet file (.xlsx, .xls):</label>
+                  <input 
+                    type="file" 
+                    accept=".xlsx, .xls" 
+                    onChange={handleFileChange}
+                    style={{ ...inputStyle, padding: '0.5rem', background: '#f8fafc' }}
+                  />
+                </div>
+
+                {validationPreview && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {/* Validation indicators */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.5rem' }}>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--foreground-muted)' }}>Total Rows</div>
+                        <strong style={{ fontSize: '1.1rem' }}>{validationPreview.totalRows}</strong>
+                      </div>
+                      <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#065f46' }}>Ready to Import</div>
+                        <strong style={{ fontSize: '1.1rem', color: '#047857' }}>{validationPreview.validRowsCount}</strong>
+                      </div>
+                      <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#92400e' }}>DB Duplicates</div>
+                        <strong style={{ fontSize: '1.1rem', color: '#b45309' }}>{validationPreview.dbDuplicatesCount}</strong>
+                      </div>
+                      <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#991b1b' }}>File Errors</div>
+                        <strong style={{ fontSize: '1.1rem', color: '#b91c1c' }}>
+                          {validationPreview.fileDuplicatesCount + validationPreview.missingDataCount}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Warning / Error report block */}
+                    {validationPreview.errors.length > 0 && (
+                      <div style={{ maxHeight: '140px', overflowY: 'auto', background: '#fff1f2', border: '1px solid #fecdd3', padding: '0.75rem', borderRadius: '6px', fontSize: '0.8rem', color: '#9f1239' }}>
+                        <strong>Validation Logs & Warnings:</strong>
+                        <ul style={{ margin: '0.25rem 0 0 1rem', padding: 0 }}>
+                          {validationPreview.errors.slice(0, 15).map((err, idx) => (
+                            <li key={idx}>{err}</li>
+                          ))}
+                          {validationPreview.errors.length > 15 && (
+                            <li style={{ fontStyle: 'italic', fontWeight: 600 }}>...and {validationPreview.errors.length - 15} more warnings.</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <button type="button" onClick={() => setImportStep('guide')} className="btn-secondary" disabled={importing}>
+                    Back
+                  </button>
+                  {validationPreview && validationPreview.failedReportData.length > 0 && (
+                    <button type="button" onClick={handleDownloadErrorReport} className="btn-secondary" style={{ color: '#b91c1c', borderColor: '#fca5a5' }}>
+                      ⚠️ Download Excel Error Report
+                    </button>
+                  )}
+                  <button 
+                    type="button" 
+                    onClick={handleImport} 
+                    className="btn-primary"
+                    disabled={!validationPreview || validationPreview.validRowsCount === 0 || importing}
+                  >
+                    {importing ? "Importing..." : `Import ${validationPreview?.validRowsCount || 0} Clients`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Summary */}
+            {importStep === 'summary' && importResult && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ textAlign: 'center', padding: '1rem' }}>
+                  <span style={{ fontSize: '3rem' }}>🎉</span>
+                  <h4 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.5rem 0' }}>Client Import Process Completed</h4>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)', margin: 0 }}>
+                    Your spreadsheet data has been successfully ingested into the client database directory.
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>Successfully Ingested:</div>
+                    <strong style={{ fontSize: '1.25rem', color: '#16a34a' }}>{importResult.imported} clients</strong>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>Skipped / Duplicates:</div>
+                    <strong style={{ fontSize: '1.25rem', color: '#b45309' }}>{importResult.skipped} records</strong>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>Failed Entries:</div>
+                    <strong style={{ fontSize: '1.25rem', color: '#dc2626' }}>{importResult.failed} records</strong>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)' }}>Total Processed:</div>
+                    <strong style={{ fontSize: '1.25rem' }}>{importResult.total} records</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', justifyContent: 'flex-end' }}>
+                  {validationPreview && validationPreview.failedReportData.length > 0 && (
+                    <button type="button" onClick={handleDownloadErrorReport} className="btn-secondary" style={{ color: '#b91c1c', borderColor: '#fca5a5' }}>
+                      ⚠️ Download Excel Error Report
+                    </button>
+                  )}
+                  <button type="button" onClick={closeImportModal} className="btn-primary">
+                    Close Wizard
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* View Client Details Popup Card Modal */}
+      {showViewModal && viewingClient && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+              <h3 style={{ fontWeight: 800, margin: 0, fontSize: '1.2rem' }}>Client Profile Card</h3>
+              <button onClick={() => { setShowViewModal(false); setViewingClient(null); }} style={closeBtnStyle}>✕</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.875rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: '1.25rem', color: 'var(--foreground)' }}>{viewingClient.company_name}</strong>
+                  <span className="badge" style={getStatusBadgeStyle(viewingClient.dynamic_status)}>
+                    {viewingClient.dynamic_status}
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>Industry: {viewingClient.industry || 'Other'}</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Contact Person</label>
+                  <span style={{ fontWeight: 600 }}>{viewingClient.contact_person || 'N/A'}</span>
+                </div>
+                <div>
+                  <label style={labelStyle}>Phone Number</label>
+                  <span style={{ fontWeight: 600 }}>{viewingClient.phone || 'N/A'}</span>
+                </div>
+                <div>
+                  <label style={labelStyle}>Email Address</label>
+                  <span style={{ fontWeight: 600 }}>{viewingClient.email || 'N/A'}</span>
+                </div>
+                <div>
+                  <label style={labelStyle}>Activity Status</label>
+                  <span className="badge" style={{ ...getStatusBadgeStyle(viewingClient.dynamic_status), display: 'inline-block', marginTop: '2px' }}>
+                    {viewingClient.dynamic_status}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                <label style={labelStyle}>Billing / Office Address</label>
+                <span>
+                  {viewingClient.address 
+                    ? `${viewingClient.address}, ${viewingClient.city || ''}, ${viewingClient.state || ''}`
+                    : 'No address registered.'
+                  }
+                </span>
+              </div>
+
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                <label style={labelStyle}>Remarks / Notes</label>
+                <span style={{ fontStyle: 'italic', color: '#475569' }}>
+                  {viewingClient.remarks ? `"${viewingClient.remarks}"` : 'No notes.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', background: '#fafafa', padding: '0.75rem', borderRadius: '8px' }}>
+                <div>
+                  <label style={labelStyle}>Total Transactions</label>
+                  <strong style={{ fontSize: '1rem', color: 'var(--primary)' }}>{viewingClient.total_orders || 0} orders</strong>
+                </div>
+                <div>
+                  <label style={labelStyle}>Last Purchase Date</label>
+                  <strong style={{ fontSize: '0.9rem' }}>
+                    {viewingClient.last_purchase_at 
+                      ? new Date(viewingClient.last_purchase_at).toLocaleDateString()
+                      : 'No purchases'
+                    }
+                  </strong>
+                </div>
+              </div>
+
+              <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', textAlign: 'right', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                Account Created: {new Date(viewingClient.created_at).toLocaleDateString()}
+              </div>
+            </div>
+
+            <div style={{ ...formActionsStyle, marginTop: '1rem' }}>
+              <button type="button" onClick={() => { setShowViewModal(false); setViewingClient(null); }} className="btn-primary">
+                Close Card
+              </button>
+            </div>
           </div>
         </div>
       )}

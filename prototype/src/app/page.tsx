@@ -12,6 +12,7 @@ type AuthMode = 'login' | 'forgot_password' | 'verify_otp' | 'reset_password';
 export default function LoginPage() {
   const { userRole, login } = useAuth();
   const router = useRouter();
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   const [mode, setMode] = useState<AuthMode>('login');
   
@@ -30,7 +31,7 @@ export default function LoginPage() {
   useEffect(() => {
     const fetchBranding = async () => {
       try {
-        const res = await fetch('http://localhost:5000/auth/branding');
+        const res = await fetch(`${baseUrl}/auth/branding`);
         const json = await res.json();
         if (json.success && json.data) {
           setLogoUrl(json.data.logoUrl || null);
@@ -39,7 +40,7 @@ export default function LoginPage() {
       } catch (e) {}
     };
     fetchBranding();
-  }, []);
+  }, [baseUrl]);
 
   useEffect(() => {
     if (userRole) {
@@ -57,7 +58,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/auth/login', {
+      const res = await fetch(`${baseUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -87,7 +88,7 @@ export default function LoginPage() {
       console.log("🟢 [Frontend] Google Login Success. Token response received:", tokenResponse);
       setLoading(true);
       try {
-        const res = await fetch('http://localhost:5000/auth/google-login', {
+        const res = await fetch(`${baseUrl}/auth/google-login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ accessToken: tokenResponse.access_token })
@@ -125,7 +126,7 @@ export default function LoginPage() {
     setLoading(true);
     
     try {
-      const res = await fetch('http://localhost:5000/auth/forgot-password', {
+      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -149,7 +150,7 @@ export default function LoginPage() {
     setLoading(true);
     
     try {
-      const res = await fetch('http://localhost:5000/auth/verify-otp', {
+      const res = await fetch(`${baseUrl}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp })
@@ -173,7 +174,7 @@ export default function LoginPage() {
     setLoading(true);
     
     try {
-      const res = await fetch('http://localhost:5000/auth/reset-password', {
+      const res = await fetch(`${baseUrl}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp, newPassword })
@@ -218,7 +219,7 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
           {logoUrl ? (
             <img 
-              src={`http://localhost:5000${logoUrl}`} 
+              src={`${baseUrl}${logoUrl}`} 
               alt="Company Logo" 
               style={{ height: '60px', width: 'auto', objectFit: 'contain', borderRadius: '8px', marginBottom: '1rem' }} 
             />

@@ -29,6 +29,9 @@ export interface Transaction {
   modelNumber?: string;
   warehouseId: string;
   toWarehouseId?: string;
+  warehouseName?: string;
+  fromWarehouseName?: string;
+  toWarehouseName?: string;
   quantity: number;
   user: string;
   narration?: string;

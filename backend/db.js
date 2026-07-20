@@ -60,6 +60,7 @@ async function createTables() {
         is_active BOOLEAN DEFAULT TRUE,
         is_verified BOOLEAN DEFAULT TRUE,
         language VARCHAR(10) NOT NULL DEFAULT 'en',
+        purchase_team BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -120,7 +121,7 @@ async function createTables() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         group_name VARCHAR(255) NOT NULL,
         product_name VARCHAR(255) NOT NULL,
-        model_no VARCHAR(255) NOT NULL UNIQUE,
+        model_no VARCHAR(255) NOT NULL,
         unit VARCHAR(255) DEFAULT 'pcs',
         description TEXT,
         min_stock INT DEFAULT 10,
@@ -131,7 +132,7 @@ async function createTables() {
         purchase_price DECIMAL(10, 2) DEFAULT 0.00,
         selling_price DECIMAL(10, 2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_model_no (model_no),
+        UNIQUE KEY unique_model_product (model_no, product_name),
         FOREIGN KEY (preferred_supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
       )
     `);
@@ -186,11 +187,27 @@ async function createTables() {
         unit_price DECIMAL(10, 2) DEFAULT 0.00,
         total_value DECIMAL(12, 2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-        FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+        FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
         FOREIGN KEY (from_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
         FOREIGN KEY (to_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
         FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+      )
+    `);
+
+    // PURCHASE_QUEUE TABLE
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS purchase_queue (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        product_id INT NOT NULL,
+        warehouse_id VARCHAR(50) NOT NULL,
+        reorder_qty INT NOT NULL,
+        status ENUM('Pending', 'Ordered', 'Received', 'Cancelled') NOT NULL DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_product_warehouse (product_id, warehouse_id),
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+        FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE
       )
     `);
 
@@ -244,6 +261,82 @@ async function createTables() {
 
     // Clean up deprecated settings keys
     await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info', 'business_configuration')");
+
+    // ------------------------------------------------------------
+    // CLIENT FEEDBACK ROUND 3 MIGRATIONS
+    // ------------------------------------------------------------
+
+    // 1. Drop strict model_no uniqueness constraint and add composite (model_no, product_name) uniqueness constraint
+    try {
+      const [indexes] = await conn.query('SHOW INDEX FROM products WHERE Key_name = "model_no" AND Non_unique = 0');
+      if (indexes.length > 0) {
+        await conn.query('ALTER TABLE products DROP INDEX model_no');
+        console.log('✅ Dropped unique index model_no from products table.');
+      }
+    } catch (err) {
+      console.log('ℹ️ model_no index check/drop status:', err.message);
+    }
+
+    try {
+      const [compIndexes] = await conn.query('SHOW INDEX FROM products WHERE Key_name = "unique_model_product"');
+      if (compIndexes.length === 0) {
+        await conn.query('ALTER TABLE products ADD UNIQUE KEY unique_model_product (model_no, product_name)');
+        console.log('✅ Created composite unique index (model_no, product_name) on products table.');
+      }
+    } catch (err) {
+      console.error('❌ Failed to add composite unique index unique_model_product:', err.message);
+    }
+
+    // 2. Create purchase_team_recipients table
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS purchase_team_recipients (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        name VARCHAR(255) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        notes VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Checked/created purchase_team_recipients table.');
+
+    // 3. Add snapshot columns to transactions table and backfill
+    const [columns] = await conn.query('SHOW COLUMNS FROM transactions');
+    const columnNames = columns.map(c => c.Field);
+
+    if (!columnNames.includes('warehouse_name')) {
+      await conn.query('ALTER TABLE transactions ADD COLUMN warehouse_name VARCHAR(255) NULL');
+      console.log('✅ Added warehouse_name column to transactions.');
+    }
+    if (!columnNames.includes('from_warehouse_name')) {
+      await conn.query('ALTER TABLE transactions ADD COLUMN from_warehouse_name VARCHAR(255) NULL');
+      console.log('✅ Added from_warehouse_name column to transactions.');
+    }
+    if (!columnNames.includes('to_warehouse_name')) {
+      await conn.query('ALTER TABLE transactions ADD COLUMN to_warehouse_name VARCHAR(255) NULL');
+      console.log('✅ Added to_warehouse_name column to transactions.');
+    }
+
+    // Backfill NULL snapshot fields safely and idempotently
+    await conn.query(`
+      UPDATE transactions t
+      JOIN warehouses w ON t.warehouse_id = w.id
+      SET t.warehouse_name = w.name
+      WHERE t.warehouse_name IS NULL
+    `);
+    await conn.query(`
+      UPDATE transactions t
+      JOIN warehouses w ON t.warehouse_id = w.id
+      SET t.from_warehouse_name = w.name
+      WHERE t.from_warehouse_name IS NULL
+    `);
+    await conn.query(`
+      UPDATE transactions t
+      JOIN warehouses w ON t.to_warehouse_id = w.id
+      SET t.to_warehouse_name = w.name
+      WHERE t.to_warehouse_name IS NULL AND t.to_warehouse_id IS NOT NULL
+    `);
+    console.log('✅ Backfilled empty warehouse name snapshot fields in transactions table.');
 
   } catch (error) {
     console.error('❌ Error creating tables:', error.message);

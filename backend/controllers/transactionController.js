@@ -1,6 +1,7 @@
 const { getPool } = require('../db');
 const { sendMail } = require('../utils/mailer');
 const { logAction } = require('../utils/auditLogger');
+const reorderService = require('../services/reorderService');
 
 exports.getTransactions = async (req, res) => {
   const userRole = req.user?.role;
@@ -95,24 +96,24 @@ exports.createTransaction = async (req, res) => {
       txnUnitPrice = unit_price !== undefined ? parseFloat(unit_price) : parseFloat(product.purchase_price);
     } 
     else if (type === 'OUTWARD') {
+      if (!client_id) {
+        await conn.rollback();
+        return res.status(400).json({ success: false, message: 'Please select a client before confirming the outward transaction.', data: null });
+      }
       if (currentStock < numericQuantity) {
         await conn.rollback();
         return res.status(400).json({ success: false, message: 'Insufficient stock in the selected warehouse', data: null });
       }
-      if (client_id) {
-        // Verify client exists
-        const [cRows] = await conn.query('SELECT company_name FROM clients WHERE id = ?', [client_id]);
-        if (cRows.length === 0) {
-          await conn.rollback();
-          return res.status(404).json({ success: false, message: 'Selected client not found.', data: null });
-        }
+      // Verify client exists
+      const [cRows] = await conn.query('SELECT company_name FROM clients WHERE id = ?', [client_id]);
+      if (cRows.length === 0) {
+        await conn.rollback();
+        return res.status(404).json({ success: false, message: 'Selected client not found.', data: null });
+      }
 
-        txnClientId = parseInt(client_id);
-        // Automatically maintain purchase history (last purchase timestamp)
-        await conn.query('UPDATE clients SET last_purchase_at = CURRENT_TIMESTAMP WHERE id = ?', [txnClientId]);
-        if (!finalNarration) {
-          finalNarration = `Sale to ${cRows[0].company_name}`;
-        }
+      txnClientId = parseInt(client_id);
+      if (!finalNarration) {
+        finalNarration = `Sale to ${cRows[0].company_name}`;
       }
 
       await updateStock(conn, product_id, warehouse_id, -numericQuantity);
@@ -163,37 +164,20 @@ exports.createTransaction = async (req, res) => {
 
     const txnTotalValue = txnUnitPrice * numericQuantity;
 
-    // Insert log
-    const [txnResult] = await conn.query(`
-      INSERT INTO transactions 
-        (type, product_id, quantity, warehouse_id, to_warehouse_id, user_email, narration, client_id, unit_price, total_value) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      type, 
-      product_id, 
-      numericQuantity, 
-      warehouse_id, 
-      to_warehouse_id || null, 
-      userEmail, 
-      finalNarration || null,
-      txnClientId,
-      txnUnitPrice,
-      txnTotalValue
-    ]);
-
-    const txnId = txnResult.insertId;
+    const { insertId: txnId, wName, toWName } = await saveTransaction(conn, {
+      type,
+      product_id,
+      quantity: numericQuantity,
+      warehouse_id,
+      to_warehouse_id,
+      user_email: userEmail,
+      narration: finalNarration,
+      client_id: txnClientId,
+      unit_price: txnUnitPrice,
+      total_value: txnTotalValue
+    });
 
     // Reuse pName and pModel retrieved earlier in the function block
-
-    // Fetch warehouse names
-    const [wRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [warehouse_id]);
-    const wName = wRows.length > 0 ? wRows[0].name : 'N/A';
-    
-    let toWName = '';
-    if (to_warehouse_id) {
-      const [twRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [to_warehouse_id]);
-      if (twRows.length > 0) toWName = twRows[0].name;
-    }
 
     let actionLabel = type; // INWARD, OUTWARD, TRANSFER, ADJUSTMENT
     let desc = `${type} transaction of ${numericQuantity} units for product ${pName} (${pModel}) at warehouse ${wName}.`;
@@ -252,10 +236,13 @@ exports.createTransaction = async (req, res) => {
     if (type === 'INWARD' || type === 'OUTWARD' || type === 'ADJUSTMENT') {
       console.log(`[DEBUG_ALERT] Transaction committed. Calling checkAndSendAlert for ${type} on product ${product_id}, warehouse ${warehouse_id}`);
       checkAndSendAlert(product_id, warehouse_id).catch(e => console.error(e));
+      reorderService.checkReorder(product_id, warehouse_id).catch(e => console.error(e));
     } else if (type === 'TRANSFER') {
       console.log(`[DEBUG_ALERT] Transaction committed. Calling checkAndSendAlert for TRANSFER on product ${product_id}, source warehouse ${warehouse_id}, dest warehouse ${to_warehouse_id}`);
       checkAndSendAlert(product_id, warehouse_id).catch(e => console.error(e));
       checkAndSendAlert(product_id, to_warehouse_id).catch(e => console.error(e));
+      reorderService.checkReorder(product_id, warehouse_id).catch(e => console.error(e));
+      reorderService.checkReorder(product_id, to_warehouse_id).catch(e => console.error(e));
     }
 
   } catch (err) {
@@ -276,6 +263,55 @@ async function updateStock(conn, productId, warehouseId, deltaQty) {
     VALUES (?, ?, ?)
     ON DUPLICATE KEY UPDATE quantity = quantity + ?
   `, [productId, warehouseId, deltaQty, deltaQty]);
+}
+
+// Reusable helper to retrieve warehouse names and insert a transaction record cleanly.
+async function saveTransaction(conn, {
+  type,
+  product_id,
+  quantity,
+  warehouse_id,
+  to_warehouse_id = null,
+  user_email = null,
+  narration = null,
+  client_id = null,
+  unit_price = 0.00,
+  total_value = 0.00
+}) {
+  const [wRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [warehouse_id]);
+  const wName = wRows.length > 0 ? wRows[0].name : 'N/A';
+  
+  let toWName = '';
+  if (to_warehouse_id) {
+    const [twRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [to_warehouse_id]);
+    if (twRows.length > 0) toWName = twRows[0].name;
+  }
+
+  const [result] = await conn.query(`
+    INSERT INTO transactions 
+      (type, product_id, quantity, warehouse_id, to_warehouse_id, user_email, narration, client_id, unit_price, total_value, warehouse_name, from_warehouse_name, to_warehouse_name) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    type,
+    product_id,
+    quantity,
+    warehouse_id,
+    to_warehouse_id || null,
+    user_email,
+    narration || null,
+    client_id,
+    unit_price,
+    total_value,
+    wName,
+    wName,
+    toWName || null
+  ]);
+
+  return {
+    insertId: result.insertId,
+    wName,
+    toWName
+  };
 }
 
 // Fire-and-forget function

@@ -2,6 +2,7 @@
 
 import { InventoryDb } from "@/lib/db";
 import { useAuth } from "@/components/AuthProvider";
+import { useToast } from "@/components/ToastProvider";
 import { useMemo, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/apiFetch";
@@ -43,11 +44,11 @@ interface Client {
 
 export default function DashboardClient({ initialData }: { initialData: InventoryDb }) {
   const { userRole } = useAuth();
+  const { showToast } = useToast();
   const router = useRouter();
 
-  // Load clients and settings for widgets
+  // Load clients for widgets
   const [clients, setClients] = useState<Client[]>([]);
-  const [safetyMultiplier, setSafetyMultiplier] = useState(1.0);
 
   useEffect(() => {
     if (userRole === 'Basic User') {
@@ -65,20 +66,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
       } catch (e) {}
     };
 
-    const loadSettings = async () => {
-      try {
-        const res = await apiFetch('/settings');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data?.business_configuration?.thresholds) {
-            setSafetyMultiplier(parseFloat(json.data.business_configuration.thresholds.global_safety_multiplier) || 1.0);
-          }
-        }
-      } catch (e) {}
-    };
-
     loadClients();
-    loadSettings();
   }, [userRole, router]);
 
   // ── Warehouse totals ──
@@ -210,67 +198,6 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
 
   const recentTxs = initialData.transactions.slice(0, 8);
 
-  // ── PREDICTIVE PURCHASE PLANNING ──
-  // Compute Average Daily Consumption (ADC) and reordering recommendations
-  const purchasePlans = useMemo(() => {
-    // ADC = outward quantity in last 30 days / 30
-    const recommendations = initialData.items.map(item => {
-      const currentStock = Object.values(item.stock).reduce((s, n) => s + n, 0);
-      const leadTime = item.leadTimeDays || 0;
-      const safetyBufferVal = item.safetyStock || 0;
-      
-      // Calculate outward quantity in last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      let outwardQty30 = 0;
-      initialData.transactions.forEach(tx => {
-        if (tx.itemId === item.id && tx.type === 'OUTWARD') {
-          const txDate = new Date(tx.date);
-          if (txDate >= thirtyDaysAgo) {
-            outwardQty30 += tx.quantity;
-          }
-        }
-      });
-
-      const adc = outwardQty30 / 30;
-      const remainingDays = adc > 0 ? currentStock / adc : Infinity;
-      
-      // Reorder Point = (ADC * Lead Time) + (Safety Stock * Global Multiplier)
-      const reorderPoint = (adc * leadTime) + (safetyBufferVal * safetyMultiplier);
-      const isReorderRequired = currentStock < reorderPoint;
-      
-      // Suggested order quantity = Reorder Point - Current Stock
-      let suggestedOrderQty = 0;
-      if (isReorderRequired) {
-        suggestedOrderQty = Math.ceil(reorderPoint - currentStock);
-        // Fallback to configured product reorder quantity if larger
-        if (item.reorderQuantity && item.reorderQuantity > suggestedOrderQty) {
-          suggestedOrderQty = item.reorderQuantity;
-        }
-      }
-
-      return {
-        id: item.id,
-        model: item.model,
-        name: item.product,
-        currentStock,
-        adc: adc.toFixed(2),
-        remainingDays: remainingDays === Infinity ? '∞' : Math.ceil(remainingDays),
-        leadTime,
-        preferredSupplier: item.preferredSupplierName || 'Direct/Default Supplier',
-        suggestedOrderQty,
-        isReorderRequired
-      };
-    });
-
-    return recommendations.filter(r => r.isReorderRequired).sort((a, b) => {
-      const daysA = a.remainingDays === '∞' ? 9999 : Number(a.remainingDays);
-      const daysB = b.remainingDays === '∞' ? 9999 : Number(b.remainingDays);
-      return daysA - daysB;
-    });
-  }, [initialData, safetyMultiplier]);
-
   // Inactive clients filter
   const inactiveClientsList = useMemo(() => {
     return clients.filter(c => c.dynamic_status === 'Inactive').slice(0, 6);
@@ -356,68 +283,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
         </div>
       </div>
 
-      {/* Dynamic Predictive Purchase Planning Panel */}
-      <div className="card mb-6" style={{ borderLeft: '4px solid var(--primary)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div>
-            <h2 style={{ margin: 0 }}>🔮 Predictive Purchase Planning Recommendations</h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', margin: 0, marginTop: '0.125rem' }}>
-              Calculates Average Daily Consumption (ADC) dynamically from outward logs to suggest orders and anticipate stock depletion.
-            </p>
-          </div>
-          <span className="badge badge-inward" style={{ fontWeight: 700 }}>
-            Global Safety Factor: {safetyMultiplier}x
-          </span>
-        </div>
 
-        {purchasePlans.length === 0 ? (
-          <p style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600, padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-            ✅ All inventory items are well-stocked! No predictive purchase orders are required currently.
-          </p>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Model Number</th>
-                  <th>Product Name</th>
-                  <th>Total Stock</th>
-                  <th>ADC (30d)</th>
-                  <th>Est. Days Left</th>
-                  <th>Lead Time</th>
-                  <th>Preferred Supplier</th>
-                  <th>Suggested Order Qty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchasePlans.map(plan => (
-                  <tr key={plan.id}>
-                    <td style={{ fontWeight: 700, fontSize: '0.8rem' }}>{plan.model}</td>
-                    <td style={{ fontSize: '0.8rem' }}>{plan.name}</td>
-                    <td style={{ fontWeight: 600 }}>{plan.currentStock}</td>
-                    <td>{plan.adc}/day</td>
-                    <td>
-                      <span className="badge" style={{ 
-                        background: plan.remainingDays === '∞' ? '#f1f5f9' : Number(plan.remainingDays) <= plan.leadTime ? '#fee2e2' : '#fef9c3',
-                        color: plan.remainingDays === '∞' ? '#475569' : Number(plan.remainingDays) <= plan.leadTime ? '#b91c1c' : '#a16207'
-                      }}>
-                        {plan.remainingDays} days
-                      </span>
-                    </td>
-                    <td>{plan.leadTime} days</td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>{plan.preferredSupplier}</td>
-                    <td>
-                      <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
-                        {plan.suggestedOrderQty} units
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
       {/* Inactive Client Alerts widget */}
       <div className="card mb-6" style={{ borderLeft: '4px solid var(--danger)' }}>

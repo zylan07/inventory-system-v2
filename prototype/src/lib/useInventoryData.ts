@@ -159,6 +159,9 @@ export function useInventoryData(options: UseInventoryDataOptions): UseInventory
                   modelNumber: row.modelNumber || 'Unknown', 
                   warehouseId: row.warehouse_id,
                   toWarehouseId: row.to_warehouse_id || undefined,
+                  warehouseName: row.warehouse_name || undefined,
+                  fromWarehouseName: row.from_warehouse_name || undefined,
+                  toWarehouseName: row.to_warehouse_name || undefined,
                   quantity: row.quantity,
                   user: row.user_email || 'System',
                   narration: row.narration || undefined,
@@ -172,17 +175,24 @@ export function useInventoryData(options: UseInventoryDataOptions): UseInventory
         );
       }
 
+      // Populate static warehouses list from API if requested
+      if (warehouses) {
+        promises.push(
+          apiFetch('/warehouses')
+            .then(async (res) => {
+              if (res.ok) {
+                const json = await res.json();
+                activeData.warehouses = json.data || [];
+              }
+            })
+            .catch(err => {
+              activeErrors.warehouses = err.message || 'Failed to fetch warehouses';
+            })
+        );
+      }
+
       // Settle all parallel promises independently
       await Promise.all(promises);
-
-      // Populate static warehouses list if requested
-      if (warehouses) {
-        activeData.warehouses = [
-          { id: 'W1', name: 'Warehouse 1' },
-          { id: 'W2', name: 'Warehouse 2' },
-          { id: 'W3', name: 'Warehouse 3' },
-        ];
-      }
 
       setData(activeData);
       setErrors(activeErrors);
