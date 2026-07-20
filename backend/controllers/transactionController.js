@@ -99,27 +99,24 @@ exports.createTransaction = async (req, res) => {
         await conn.rollback();
         return res.status(400).json({ success: false, message: 'Insufficient stock in the selected warehouse', data: null });
       }
-      if (!client_id) {
-        await conn.rollback();
-        return res.status(400).json({ success: false, message: 'Client selection is required for outward transactions.', data: null });
-      }
-      
-      // Verify client exists
-      const [cRows] = await conn.query('SELECT company_name FROM clients WHERE id = ?', [client_id]);
-      if (cRows.length === 0) {
-        await conn.rollback();
-        return res.status(404).json({ success: false, message: 'Selected client not found.', data: null });
+      if (client_id) {
+        // Verify client exists
+        const [cRows] = await conn.query('SELECT company_name FROM clients WHERE id = ?', [client_id]);
+        if (cRows.length === 0) {
+          await conn.rollback();
+          return res.status(404).json({ success: false, message: 'Selected client not found.', data: null });
+        }
+
+        txnClientId = parseInt(client_id);
+        // Automatically maintain purchase history (last purchase timestamp)
+        await conn.query('UPDATE clients SET last_purchase_at = CURRENT_TIMESTAMP WHERE id = ?', [txnClientId]);
+        if (!finalNarration) {
+          finalNarration = `Sale to ${cRows[0].company_name}`;
+        }
       }
 
       await updateStock(conn, product_id, warehouse_id, -numericQuantity);
       txnUnitPrice = unit_price !== undefined ? parseFloat(unit_price) : parseFloat(product.selling_price);
-      txnClientId = parseInt(client_id);
-
-      // Automatically maintain purchase history (last purchase timestamp)
-      await conn.query('UPDATE clients SET last_purchase_at = CURRENT_TIMESTAMP WHERE id = ?', [txnClientId]);
-      if (!finalNarration) {
-        finalNarration = `Sale to ${cRows[0].company_name}`;
-      }
     } 
     else if (type === 'TRANSFER') {
       if (!to_warehouse_id) {
