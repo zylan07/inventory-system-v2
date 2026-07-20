@@ -59,6 +59,7 @@ async function createTables() {
         role ENUM('Admin', 'Manager', 'Basic User') NOT NULL DEFAULT 'Basic User',
         is_active BOOLEAN DEFAULT TRUE,
         is_verified BOOLEAN DEFAULT TRUE,
+        language VARCHAR(10) NOT NULL DEFAULT 'en',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -74,6 +75,45 @@ async function createTables() {
       )
     `);
 
+    // SUPPLIERS TABLE
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        contact_person VARCHAR(255) NULL,
+        phone VARCHAR(50) NULL,
+        email VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Prepopulate default supplier if empty
+    const [supplierCount] = await conn.query('SELECT COUNT(*) as count FROM suppliers');
+    if (supplierCount[0].count === 0) {
+      await conn.query(`
+        INSERT INTO suppliers (id, name, contact_person, phone, email) 
+        VALUES (1, 'Direct/Default Supplier', 'System Default', '000-000-0000', 'default@supplier.com')
+      `);
+    }
+
+    // CLIENTS TABLE
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS clients (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_name VARCHAR(255) NOT NULL UNIQUE,
+        contact_person VARCHAR(255) NULL,
+        phone VARCHAR(50) NULL,
+        email VARCHAR(255) NULL,
+        gst VARCHAR(15) NULL,
+        address TEXT NULL,
+        city VARCHAR(100) NULL,
+        state VARCHAR(100) NULL,
+        industry VARCHAR(100) NULL,
+        remarks TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // PRODUCTS TABLE
     await conn.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -84,8 +124,15 @@ async function createTables() {
         unit VARCHAR(255) DEFAULT 'pcs',
         description TEXT,
         min_stock INT DEFAULT 10,
+        lead_time_days INT DEFAULT 0,
+        safety_stock INT DEFAULT 0,
+        preferred_supplier_id INT NULL,
+        reorder_quantity INT DEFAULT 0,
+        purchase_price DECIMAL(10, 2) DEFAULT 0.00,
+        selling_price DECIMAL(10, 2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_model_no (model_no)
+        INDEX idx_model_no (model_no),
+        FOREIGN KEY (preferred_supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
       )
     `);
 
@@ -135,11 +182,15 @@ async function createTables() {
         to_warehouse_id VARCHAR(50) DEFAULT NULL,
         user_email VARCHAR(255) DEFAULT NULL,
         narration TEXT,
+        client_id INT NULL,
+        unit_price DECIMAL(10, 2) DEFAULT 0.00,
+        total_value DECIMAL(12, 2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
         FOREIGN KEY (from_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
-        FOREIGN KEY (to_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL
+        FOREIGN KEY (to_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
       )
     `);
 
@@ -192,7 +243,7 @@ async function createTables() {
     }
 
     // Clean up deprecated settings keys
-    await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info')");
+    await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info', 'business_configuration')");
 
   } catch (error) {
     console.error('❌ Error creating tables:', error.message);

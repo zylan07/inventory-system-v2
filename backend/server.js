@@ -13,6 +13,7 @@ const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const clientRoutes = require('./routes/clientRoutes');
 const { authMiddleware } = require('./middleware/authMiddleware');
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -31,6 +32,7 @@ app.use('/transactions', authMiddleware, transactionRoutes);
 app.use('/notifications', authMiddleware, notificationRoutes);
 app.use('/profile', authMiddleware, profileRoutes);
 app.use('/settings', authMiddleware, settingsRoutes);
+app.use('/clients', authMiddleware, clientRoutes);
 
 const PORT = process.env.PORT || 5000;
 

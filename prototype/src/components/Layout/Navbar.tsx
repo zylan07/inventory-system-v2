@@ -4,6 +4,7 @@ import { useAuth } from '../AuthProvider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/apiFetch';
+import { useLanguage } from '../LanguageContext';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard Overview',
@@ -58,6 +59,7 @@ function getIcon(type: string) {
 
 export default function Navbar() {
   const { userRole, logout } = useAuth();
+  const { language, t, changeLanguage } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -195,7 +197,8 @@ export default function Navbar() {
 
   if (!userRole) return null;
 
-  const pageTitle = PAGE_TITLES[pathname] || 'Inventra';
+  const pageTitleKey = pathname === '/' ? 'dashboard' : pathname.replace(/^\//, '');
+  const pageTitle = t(`nav.${pageTitleKey}`) || PAGE_TITLES[pathname] || 'Inventra';
   const roleColor = ROLE_COLORS[userRole] || '#2563eb';
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -546,13 +549,58 @@ export default function Navbar() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
+                  width: '100%'
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--secondary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
               >
                 <span>👤</span>
-                <span>My Profile</span>
+                <span>{t('nav.profile')}</span>
               </button>
+
+              <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
+              
+              <div style={{ padding: '0.25rem 0.75rem', fontSize: '0.65rem', fontWeight: 700, color: 'var(--foreground-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Language
+              </div>
+
+              {(['en', 'ta', 'hi'] as const).map(lang => (
+                <button
+                  key={lang}
+                  onClick={() => {
+                    changeLanguage(lang);
+                  }}
+                  style={{
+                    background: language === lang ? 'var(--primary-light)' : 'none',
+                    border: 'none',
+                    color: language === lang ? 'var(--primary)' : 'var(--foreground)',
+                    padding: '0.375rem 0.75rem',
+                    borderRadius: '4px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: language === lang ? 700 : 500,
+                    transition: 'var(--transition)',
+                    paddingLeft: '1.25rem',
+                    position: 'relative',
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={e => {
+                    if (language !== lang) e.currentTarget.style.background = 'var(--secondary)';
+                  }}
+                  onMouseLeave={e => {
+                    if (language !== lang) e.currentTarget.style.background = 'none';
+                  }}
+                >
+                  {language === lang && <span style={{ position: 'absolute', left: '0.375rem', color: 'var(--primary)', fontWeight: 'bold' }}>✓</span>}
+                  {lang === 'en' ? 'English' : lang === 'ta' ? 'தமிழ்' : 'हिन्दी'}
+                </button>
+              ))}
+
+              <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
+
               <button
                 onClick={() => { setShowAccountDropdown(false); logout(); }}
                 style={{
@@ -569,12 +617,13 @@ export default function Navbar() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
+                  width: '100%'
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
               >
                 <span>🚪</span>
-                <span>Logout</span>
+                <span>{t('nav.logout')}</span>
               </button>
             </div>
           )}

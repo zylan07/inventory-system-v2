@@ -12,6 +12,13 @@ export interface Item {
   minStock: number;
   unit?: string;
   stock: Record<string, number>;
+  leadTimeDays?: number;
+  safetyStock?: number;
+  preferredSupplierId?: number | null;
+  preferredSupplierName?: string;
+  reorderQuantity?: number;
+  purchasePrice?: number;
+  sellingPrice?: number;
 }
 
 export interface Transaction {
@@ -28,6 +35,10 @@ export interface Transaction {
   adjustmentType?: 'ADD' | 'SUBTRACT' | string;
   adjustmentReason?: string;
   notes?: string;
+  clientId?: number | null;
+  clientName?: string | null;
+  unitPrice?: number;
+  totalValue?: number;
 }
 
 export interface InventoryDb {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../AuthProvider';
+import { useLanguage } from '../LanguageContext';
 
 const ROLE_BADGE: Record<string, string> = {
   'Admin': 'badge-admin',
@@ -17,6 +18,7 @@ const NAV_GROUPS = {
       { name: 'Dashboard', path: '/dashboard', icon: '📊' },
       { name: 'Users', path: '/users', icon: '👥' },
       { name: 'Products', path: '/products', icon: '🏷️' },
+      { name: 'Clients', path: '/clients', icon: '🏢' },
       { name: 'Inward', path: '/inward', icon: '📥' },
       { name: 'Outward', path: '/outward', icon: '📤' },
       { name: 'Transfer', path: '/transfer', icon: '🔄' },
@@ -24,6 +26,7 @@ const NAV_GROUPS = {
     { section: 'Reports & Stock', items: [
       { name: 'Stock Levels', path: '/stock', icon: '📦' },
       { name: 'Transactions', path: '/reports', icon: '📄' },
+      { name: 'Client Analytics', path: '/clients/analytics', icon: '📈' },
       { name: 'Adjustment', path: '/adjustment', icon: '⚖️' },
     ]},
     { section: 'System Administration', items: [
@@ -33,6 +36,7 @@ const NAV_GROUPS = {
   Manager: [
     { section: 'Operations', items: [
       { name: 'Dashboard', path: '/dashboard', icon: '📊' },
+      { name: 'Clients', path: '/clients', icon: '🏢' },
       { name: 'Inward', path: '/inward', icon: '📥' },
       { name: 'Outward', path: '/outward', icon: '📤' },
       { name: 'Transfer', path: '/transfer', icon: '🔄' },
@@ -40,6 +44,7 @@ const NAV_GROUPS = {
     { section: 'Reports & Stock', items: [
       { name: 'Stock Levels', path: '/stock', icon: '📦' },
       { name: 'Transactions', path: '/reports', icon: '📄' },
+      { name: 'Client Analytics', path: '/clients/analytics', icon: '📈' },
     ]},
   ],
   'Basic User': [
@@ -49,8 +54,25 @@ const NAV_GROUPS = {
   ],
 };
 
+const MENU_KEYS: Record<string, string> = {
+  'Dashboard': 'dashboard',
+  'Users': 'users',
+  'Products': 'products',
+  'Clients': 'clients',
+  'Client Analytics': 'analytics',
+  'Inward': 'inward',
+  'Outward': 'outward',
+  'Outward (Deduct)': 'outward',
+  'Transfer': 'transfer',
+  'Stock Levels': 'stock',
+  'Transactions': 'reports',
+  'Adjustment': 'adjustment',
+  'Settings': 'settings'
+};
+
 export default function Sidebar() {
   const { userRole } = useAuth();
+  const { t } = useLanguage();
   const pathname = usePathname();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('INVENTRA');
@@ -181,7 +203,7 @@ export default function Sidebar() {
               onClick={() => setIsOpen(false)}
               >
                 <span style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon}</span>
-                {item.name}
+                {t(`nav.${MENU_KEYS[item.name] || item.name.toLowerCase()}`)}
               </Link>
             );
           })}

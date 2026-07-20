@@ -7,7 +7,12 @@ exports.getProducts = async (req, res) => {
     const userRole = req.user?.role;
 
     if (userRole === 'Admin') {
-      const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+      const [rows] = await pool.query(`
+        SELECT p.*, s.name as preferred_supplier_name 
+        FROM products p 
+        LEFT JOIN suppliers s ON p.preferred_supplier_id = s.id 
+        ORDER BY p.created_at DESC
+      `);
       res.json({ success: true, message: 'Products fetched successfully', data: rows });
     } else {
       const [rows] = await pool.query('SELECT id, product_name, model_no, unit FROM products ORDER BY model_no ASC');
@@ -23,7 +28,11 @@ const { logAction } = require('../utils/auditLogger');
 
 exports.createProduct = async (req, res) => {
   try {
-    const { group_name, product_name, model_no, description, min_stock, unit } = req.body;
+    const { 
+      group_name, product_name, model_no, description, min_stock, unit,
+      lead_time_days, safety_stock, preferred_supplier_id, reorder_quantity,
+      purchase_price, selling_price
+    } = req.body;
     
     if (!group_name || !product_name || !model_no) {
       return res.status(400).json({ success: false, message: 'Missing required product fields', data: null });
@@ -38,8 +47,25 @@ exports.createProduct = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO products (group_name, product_name, model_no, unit, description, min_stock) VALUES (?, ?, ?, ?, ?, ?)',
-      [group_name, product_name, model_no, unit || 'pcs', description || null, min_stock || 10]
+      `INSERT INTO products (
+        group_name, product_name, model_no, unit, description, min_stock,
+        lead_time_days, safety_stock, preferred_supplier_id, reorder_quantity,
+        purchase_price, selling_price
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        group_name, 
+        product_name, 
+        model_no, 
+        unit || 'pcs', 
+        description || null, 
+        min_stock || 10,
+        parseInt(lead_time_days) || 0,
+        parseInt(safety_stock) || 0,
+        preferred_supplier_id ? parseInt(preferred_supplier_id) : null,
+        parseInt(reorder_quantity) || 0,
+        parseFloat(purchase_price) || 0.00,
+        parseFloat(selling_price) || 0.00
+      ]
     );
 
     const newId = result.insertId;
@@ -50,7 +76,7 @@ exports.createProduct = async (req, res) => {
       reference_type: 'products',
       reference_id: newId,
       old_value: null,
-      new_value: { group_name, product_name, model_no, unit, min_stock },
+      new_value: { group_name, product_name, model_no, unit, min_stock, purchase_price, selling_price },
       description: `Created new product ${product_name} (Model: ${model_no}).`
     });
 
@@ -64,7 +90,11 @@ exports.createProduct = async (req, res) => {
 exports.updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { group_name, product_name, model_no, unit, description, min_stock } = req.body;
+    const { 
+      group_name, product_name, model_no, unit, description, min_stock,
+      lead_time_days, safety_stock, preferred_supplier_id, reorder_quantity,
+      purchase_price, selling_price
+    } = req.body;
 
     if (!group_name || !product_name || !model_no) {
       return res.status(400).json({ success: false, message: 'Missing required product fields', data: null });
@@ -87,8 +117,26 @@ exports.updateProduct = async (req, res) => {
 
     // Update details
     await pool.query(
-      'UPDATE products SET group_name = ?, product_name = ?, model_no = ?, unit = ?, description = ?, min_stock = ? WHERE id = ?',
-      [group_name.trim(), product_name.trim(), model_no.trim().toUpperCase(), unit || 'pcs', description || null, min_stock || 10, id]
+      `UPDATE products 
+       SET group_name = ?, product_name = ?, model_no = ?, unit = ?, description = ?, min_stock = ?,
+           lead_time_days = ?, safety_stock = ?, preferred_supplier_id = ?, reorder_quantity = ?,
+           purchase_price = ?, selling_price = ? 
+       WHERE id = ?`,
+      [
+        group_name.trim(), 
+        product_name.trim(), 
+        model_no.trim().toUpperCase(), 
+        unit || 'pcs', 
+        description || null, 
+        min_stock || 10,
+        parseInt(lead_time_days) || 0,
+        parseInt(safety_stock) || 0,
+        preferred_supplier_id ? parseInt(preferred_supplier_id) : null,
+        parseInt(reorder_quantity) || 0,
+        parseFloat(purchase_price) || 0.00,
+        parseFloat(selling_price) || 0.00,
+        id
+      ]
     );
 
     // Write audit log
@@ -97,21 +145,16 @@ exports.updateProduct = async (req, res) => {
       action: 'PRODUCT_UPDATED',
       reference_type: 'products',
       reference_id: id,
-      old_value: {
-        group_name: oldProduct.group_name,
-        product_name: oldProduct.product_name,
-        model_no: oldProduct.model_no,
-        unit: oldProduct.unit,
-        description: oldProduct.description,
-        min_stock: oldProduct.min_stock
-      },
+      old_value: oldProduct,
       new_value: {
         group_name: group_name.trim(),
         product_name: product_name.trim(),
         model_no: model_no.trim().toUpperCase(),
         unit: unit || 'pcs',
         description: description || null,
-        min_stock: min_stock || 10
+        min_stock: min_stock || 10,
+        purchase_price,
+        selling_price
       },
       description: `Updated product ${product_name} details.`
     });

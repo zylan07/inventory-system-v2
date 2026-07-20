@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
   const userId = req.user.id;
   try {
     const [rows] = await getPool().query(
-      'SELECT id, email, name, profile_image, role, is_active, google_id, created_at FROM users WHERE id = ?',
+      'SELECT id, email, name, profile_image, role, is_active, google_id, created_at, language FROM users WHERE id = ?',
       [userId]
     );
     if (rows.length === 0) {
@@ -44,6 +44,36 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch profile' });
+  }
+});
+
+// PUT /profile/language - Update user preferred language
+router.put('/language', async (req, res) => {
+  const userId = req.user.id;
+  const { language } = req.body;
+  if (!['en', 'ta', 'hi'].includes(language)) {
+    return res.status(400).json({ success: false, message: 'Invalid language selection' });
+  }
+
+  try {
+    const pool = getPool();
+    await pool.query('UPDATE users SET language = ? WHERE id = ?', [language, userId]);
+
+    // Write audit log
+    await logAction(req, {
+      module: 'Profile',
+      action: 'UPDATE_LANGUAGE',
+      reference_type: 'users',
+      reference_id: userId,
+      old_value: null,
+      new_value: { language },
+      description: `User changed preferred language to ${language}.`
+    });
+
+    res.json({ success: true, message: 'Preferred language updated successfully', data: { language } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed to update preferred language' });
   }
 });
 

@@ -2,8 +2,10 @@
 
 import { InventoryDb } from "@/lib/db";
 import { useAuth } from "@/components/AuthProvider";
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/apiFetch";
+import Link from 'next/link';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -28,12 +30,55 @@ const TYPE_BADGE: Record<string, string> = {
   TRANSFER: 'badge-transfer', ADJUSTMENT: 'badge-adjustment',
 };
 
+interface Client {
+  id: number;
+  company_name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  last_purchase_at: string | null;
+  days_since_last_purchase: number | null;
+  dynamic_status: 'Active' | 'Regular' | 'Inactive';
+}
+
 export default function DashboardClient({ initialData }: { initialData: InventoryDb }) {
   const { userRole } = useAuth();
   const router = useRouter();
 
+  // Load clients and settings for widgets
+  const [clients, setClients] = useState<Client[]>([]);
+  const [safetyMultiplier, setSafetyMultiplier] = useState(1.0);
+
   useEffect(() => {
-    if (userRole === 'Basic User') router.push('/outward');
+    if (userRole === 'Basic User') {
+      router.push('/outward');
+      return;
+    }
+
+    const loadClients = async () => {
+      try {
+        const res = await apiFetch('/clients/all');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) setClients(json.data);
+        }
+      } catch (e) {}
+    };
+
+    const loadSettings = async () => {
+      try {
+        const res = await apiFetch('/settings');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data?.business_configuration?.thresholds) {
+            setSafetyMultiplier(parseFloat(json.data.business_configuration.thresholds.global_safety_multiplier) || 1.0);
+          }
+        }
+      } catch (e) {}
+    };
+
+    loadClients();
+    loadSettings();
   }, [userRole, router]);
 
   // ── Warehouse totals ──
@@ -51,9 +96,11 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
   const totalProducts = initialData.items.length;
   const totalWarehouses = initialData.warehouses.length;
   const totalTransactions = initialData.transactions.length;
+  
   let totalLowStockItems = 0;
   initialData.items.forEach(item => {
-    if (Object.values(item.stock).reduce((s, n) => s + n, 0) < 10) totalLowStockItems++;
+    const totalQty = Object.values(item.stock).reduce((s, n) => s + n, 0);
+    if (totalQty < (item.minStock || 10)) totalLowStockItems++;
   });
 
   // ── Item movement (OUTWARD = sold/used) ──
@@ -65,6 +112,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
     return map;
   }, [initialData]);
 
+  // Movers calculation
   const moversData = useMemo(() => {
     const items = initialData.items
       .map(item => ({ id: item.id, model: item.model.trim(), product: item.product, group: item.group, outward: itemOutwardMap[item.id] || 0 }))
@@ -83,7 +131,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
     };
   }, [initialData, itemOutwardMap]);
 
-  // ── Transfer analytics (simplified — no routes) ──
+  // ── Transfer analytics ──
   const transferData = useMemo(() => {
     const itemTransfers: Record<string, number> = {};
     initialData.transactions.forEach(tx => {
@@ -98,7 +146,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
       .sort((a, b) => b.qty - a.qty);
   }, [initialData]);
 
-  // ── Monthly trend (last 6 months, INWARD vs OUTWARD) ──
+  // ── Monthly trend (last 6 months) ──
   const monthlyTrend = useMemo(() => {
     const months: Record<string, { inward: number; outward: number }> = {};
     const now = new Date();
@@ -121,7 +169,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
     return new Date(Number(y), Number(m) - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
   });
 
-  // Charts
+  // Charts options
   const warehouseChartData = {
     labels: initialData.warehouses.map(w => w.name),
     datasets: [{
@@ -162,6 +210,72 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
 
   const recentTxs = initialData.transactions.slice(0, 8);
 
+  // ── PREDICTIVE PURCHASE PLANNING ──
+  // Compute Average Daily Consumption (ADC) and reordering recommendations
+  const purchasePlans = useMemo(() => {
+    // ADC = outward quantity in last 30 days / 30
+    const recommendations = initialData.items.map(item => {
+      const currentStock = Object.values(item.stock).reduce((s, n) => s + n, 0);
+      const leadTime = item.leadTimeDays || 0;
+      const safetyBufferVal = item.safetyStock || 0;
+      
+      // Calculate outward quantity in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      let outwardQty30 = 0;
+      initialData.transactions.forEach(tx => {
+        if (tx.itemId === item.id && tx.type === 'OUTWARD') {
+          const txDate = new Date(tx.date);
+          if (txDate >= thirtyDaysAgo) {
+            outwardQty30 += tx.quantity;
+          }
+        }
+      });
+
+      const adc = outwardQty30 / 30;
+      const remainingDays = adc > 0 ? currentStock / adc : Infinity;
+      
+      // Reorder Point = (ADC * Lead Time) + (Safety Stock * Global Multiplier)
+      const reorderPoint = (adc * leadTime) + (safetyBufferVal * safetyMultiplier);
+      const isReorderRequired = currentStock < reorderPoint;
+      
+      // Suggested order quantity = Reorder Point - Current Stock
+      let suggestedOrderQty = 0;
+      if (isReorderRequired) {
+        suggestedOrderQty = Math.ceil(reorderPoint - currentStock);
+        // Fallback to configured product reorder quantity if larger
+        if (item.reorderQuantity && item.reorderQuantity > suggestedOrderQty) {
+          suggestedOrderQty = item.reorderQuantity;
+        }
+      }
+
+      return {
+        id: item.id,
+        model: item.model,
+        name: item.product,
+        currentStock,
+        adc: adc.toFixed(2),
+        remainingDays: remainingDays === Infinity ? '∞' : Math.ceil(remainingDays),
+        leadTime,
+        preferredSupplier: item.preferredSupplierName || 'Direct/Default Supplier',
+        suggestedOrderQty,
+        isReorderRequired
+      };
+    });
+
+    return recommendations.filter(r => r.isReorderRequired).sort((a, b) => {
+      const daysA = a.remainingDays === '∞' ? 9999 : Number(a.remainingDays);
+      const daysB = b.remainingDays === '∞' ? 9999 : Number(b.remainingDays);
+      return daysA - daysB;
+    });
+  }, [initialData, safetyMultiplier]);
+
+  // Inactive clients filter
+  const inactiveClientsList = useMemo(() => {
+    return clients.filter(c => c.dynamic_status === 'Inactive').slice(0, 6);
+  }, [clients]);
+
   // Velocity list component
   const VelocityList = ({
     items, label, color, badgeClass,
@@ -192,16 +306,15 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>Dashboard</h1>
+      <h1 style={{ marginBottom: '1.5rem' }}>Dashboard Overview</h1>
 
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div 
-          className={`stat-card ${userRole === 'Admin' ? 'clickable-kpi-card' : ''}`} 
-          onClick={userRole === 'Admin' ? () => router.push('/products') : undefined}
-          title={userRole === 'Admin' ? "View Products Catalogue" : undefined}
-          aria-label={userRole === 'Admin' ? "View Products Catalogue" : undefined}
-          style={{ cursor: userRole === 'Admin' ? 'pointer' : 'default' }}
+          className="stat-card clickable-kpi-card" 
+          onClick={() => router.push('/products')}
+          title="View Products Catalogue"
+          aria-label="View Products Catalogue"
         >
           <div className="stat-label">Total SKUs</div>
           <div className="stat-value" style={{ color: 'var(--primary)' }}>{totalProducts}</div>
@@ -226,7 +339,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
           title="View Low Stock Items"
           aria-label="View Low Stock Items"
         >
-          <div className="stat-label">Low Stock (&lt;10)</div>
+          <div className="stat-label">Critical Stock Alerts</div>
           <div className="stat-value" style={{ color: 'var(--danger)' }}>{totalLowStockItems}</div>
         </div>
       </div>
@@ -241,6 +354,109 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
           <h2 style={{ marginBottom: '1rem' }}>Movement Trend (6 Months)</h2>
           <Line options={chartBaseOpts} data={trendChartData} />
         </div>
+      </div>
+
+      {/* Dynamic Predictive Purchase Planning Panel */}
+      <div className="card mb-6" style={{ borderLeft: '4px solid var(--primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>🔮 Predictive Purchase Planning Recommendations</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', margin: 0, marginTop: '0.125rem' }}>
+              Calculates Average Daily Consumption (ADC) dynamically from outward logs to suggest orders and anticipate stock depletion.
+            </p>
+          </div>
+          <span className="badge badge-inward" style={{ fontWeight: 700 }}>
+            Global Safety Factor: {safetyMultiplier}x
+          </span>
+        </div>
+
+        {purchasePlans.length === 0 ? (
+          <p style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600, padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+            ✅ All inventory items are well-stocked! No predictive purchase orders are required currently.
+          </p>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Model Number</th>
+                  <th>Product Name</th>
+                  <th>Total Stock</th>
+                  <th>ADC (30d)</th>
+                  <th>Est. Days Left</th>
+                  <th>Lead Time</th>
+                  <th>Preferred Supplier</th>
+                  <th>Suggested Order Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchasePlans.map(plan => (
+                  <tr key={plan.id}>
+                    <td style={{ fontWeight: 700, fontSize: '0.8rem' }}>{plan.model}</td>
+                    <td style={{ fontSize: '0.8rem' }}>{plan.name}</td>
+                    <td style={{ fontWeight: 600 }}>{plan.currentStock}</td>
+                    <td>{plan.adc}/day</td>
+                    <td>
+                      <span className="badge" style={{ 
+                        background: plan.remainingDays === '∞' ? '#f1f5f9' : Number(plan.remainingDays) <= plan.leadTime ? '#fee2e2' : '#fef9c3',
+                        color: plan.remainingDays === '∞' ? '#475569' : Number(plan.remainingDays) <= plan.leadTime ? '#b91c1c' : '#a16207'
+                      }}>
+                        {plan.remainingDays} days
+                      </span>
+                    </td>
+                    <td>{plan.leadTime} days</td>
+                    <td style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>{plan.preferredSupplier}</td>
+                    <td>
+                      <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+                        {plan.suggestedOrderQty} units
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Inactive Client Alerts widget */}
+      <div className="card mb-6" style={{ borderLeft: '4px solid var(--danger)' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>🚨 Inactive Client Alerts</h2>
+          <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginBottom: '1rem' }}>
+            Follow up with regular client partners who have not placed a purchase order in over 90 days.
+          </p>
+        </div>
+
+        {inactiveClientsList.length === 0 ? (
+          <p style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600, padding: '1rem', background: '#f0fdf4', borderRadius: '8px' }}>
+            ✅ Great! No inactive clients requiring immediate attention.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            {inactiveClientsList.map(c => (
+              <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '0.875rem', background: '#fafafa', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Link href={`/clients/${c.id}`} style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--primary)', textDecoration: 'none' }}>
+                    {c.company_name}
+                  </Link>
+                  <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+                    Inactive
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginTop: '0.375rem' }}>
+                  Contact: <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{c.contact_person || 'N/A'}</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
+                  Phone: <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{c.phone || 'N/A'}</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, marginTop: '0.5rem' }}>
+                  ⚠️ {c.days_since_last_purchase} days since last order
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recent Transactions */}
@@ -295,7 +511,7 @@ export default function DashboardClient({ initialData }: { initialData: Inventor
         <VelocityList items={moversData.slow} label="🐢 Slow Moving" color="var(--success)" badgeClass="velocity-slow" />
       </div>
 
-      {/* Transfer Analytics — simplified, no route tracking */}
+      {/* Transfer Analytics */}
       <h2 style={{ marginBottom: '1rem' }}>🔄 Transfer Analytics</h2>
       <div className="grid grid-cols-2 gap-4">
         <div className="card">

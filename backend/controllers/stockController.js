@@ -8,8 +8,13 @@ exports.getStock = async (req, res) => {
 
   try {
     const pool = getPool();
-    // Get all products
-    const [products] = await pool.query('SELECT * FROM products ORDER BY group_name, product_name');
+    // Get all products joined with preferred suppliers
+    const [products] = await pool.query(`
+      SELECT p.*, s.name as preferred_supplier_name 
+      FROM products p 
+      LEFT JOIN suppliers s ON p.preferred_supplier_id = s.id 
+      ORDER BY p.group_name, p.product_name
+    `);
     
     // Get all stock entries
     const [stockEntries] = await pool.query('SELECT product_id, warehouse_id, quantity FROM stock');
@@ -48,8 +53,13 @@ exports.getStockByModelNo = async (req, res) => {
     const { modelNo } = req.params;
     const pool = getPool();
     
-    // Find product
-    const [products] = await pool.query('SELECT * FROM products WHERE model_no = ?', [modelNo]);
+    // Find product joined with preferred supplier
+    const [products] = await pool.query(`
+      SELECT p.*, s.name as preferred_supplier_name 
+      FROM products p 
+      LEFT JOIN suppliers s ON p.preferred_supplier_id = s.id 
+      WHERE p.model_no = ?
+    `, [modelNo]);
     if (products.length === 0) {
       return res.status(404).json({ success: false, message: 'Product not found', data: null });
     }

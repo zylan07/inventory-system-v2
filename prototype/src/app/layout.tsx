@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import { LanguageProvider } from "@/components/LanguageContext";
 import { ToastProvider } from "@/components/ToastProvider";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import Sidebar from "@/components/Layout/Sidebar";
@@ -11,6 +12,9 @@ export const metadata: Metadata = {
   title: "Inventory Management System",
   description: "Modern Inventory Management System",
   manifest: "/manifest.json",
+};
+
+export const viewport = {
   themeColor: "#2563eb",
 };
 
@@ -31,17 +35,19 @@ export default function RootLayout({
       <body>
         <GoogleOAuthProvider clientId={clientId}>
           <AuthProvider>
-            <ToastProvider>
-              <div className="layout-wrapper">
-              <Sidebar />
-              <div className="content-wrapper">
-                <Navbar />
-                <main className="main-content">
-                  {children}
-                </main>
+            <LanguageProvider>
+              <ToastProvider>
+                <div className="layout-wrapper">
+                <Sidebar />
+                <div className="content-wrapper">
+                  <Navbar />
+                  <main className="main-content">
+                    {children}
+                  </main>
+                </div>
               </div>
-            </div>
-            </ToastProvider>
+              </ToastProvider>
+            </LanguageProvider>
           </AuthProvider>
         </GoogleOAuthProvider>
         <InstallPrompt />

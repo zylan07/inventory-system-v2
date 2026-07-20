@@ -35,7 +35,10 @@ exports.createTransaction = async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    const { type, product_id, quantity, warehouse_id, to_warehouse_id, narration, adjustmentType } = req.body;
+    const { 
+      type, product_id, quantity, warehouse_id, to_warehouse_id, narration, 
+      adjustmentType, client_id, unit_price 
+    } = req.body;
     const userEmail = req.user?.email || 'System';
     const userRole = req.user?.role;
 
@@ -70,16 +73,53 @@ exports.createTransaction = async (req, res) => {
     let transactionLogType = type;
     let finalNarration = narration;
 
+    // Fetch product pricing & details
+    const [pRows] = await conn.query(
+      'SELECT product_name, model_no, purchase_price, selling_price FROM products WHERE id = ?', 
+      [product_id]
+    );
+    if (pRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: 'Product not found', data: null });
+    }
+    const product = pRows[0];
+    const pName = product.product_name;
+    const pModel = product.model_no;
+
+    let txnUnitPrice = 0.00;
+    let txnClientId = null;
+
     // Logic based on types
     if (type === 'INWARD') {
       await updateStock(conn, product_id, warehouse_id, numericQuantity);
+      txnUnitPrice = unit_price !== undefined ? parseFloat(unit_price) : parseFloat(product.purchase_price);
     } 
     else if (type === 'OUTWARD') {
       if (currentStock < numericQuantity) {
         await conn.rollback();
         return res.status(400).json({ success: false, message: 'Insufficient stock in the selected warehouse', data: null });
       }
+      if (!client_id) {
+        await conn.rollback();
+        return res.status(400).json({ success: false, message: 'Client selection is required for outward transactions.', data: null });
+      }
+      
+      // Verify client exists
+      const [cRows] = await conn.query('SELECT company_name FROM clients WHERE id = ?', [client_id]);
+      if (cRows.length === 0) {
+        await conn.rollback();
+        return res.status(404).json({ success: false, message: 'Selected client not found.', data: null });
+      }
+
       await updateStock(conn, product_id, warehouse_id, -numericQuantity);
+      txnUnitPrice = unit_price !== undefined ? parseFloat(unit_price) : parseFloat(product.selling_price);
+      txnClientId = parseInt(client_id);
+
+      // Automatically maintain purchase history (last purchase timestamp)
+      await conn.query('UPDATE clients SET last_purchase_at = CURRENT_TIMESTAMP WHERE id = ?', [txnClientId]);
+      if (!finalNarration) {
+        finalNarration = `Sale to ${cRows[0].company_name}`;
+      }
     } 
     else if (type === 'TRANSFER') {
       if (!to_warehouse_id) {
@@ -124,19 +164,29 @@ exports.createTransaction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid transaction type', data: null });
     }
 
+    const txnTotalValue = txnUnitPrice * numericQuantity;
+
     // Insert log
     const [txnResult] = await conn.query(`
       INSERT INTO transactions 
-        (type, product_id, quantity, warehouse_id, to_warehouse_id, user_email, narration) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [type, product_id, numericQuantity, warehouse_id, to_warehouse_id || null, userEmail, finalNarration || null]);
+        (type, product_id, quantity, warehouse_id, to_warehouse_id, user_email, narration, client_id, unit_price, total_value) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      type, 
+      product_id, 
+      numericQuantity, 
+      warehouse_id, 
+      to_warehouse_id || null, 
+      userEmail, 
+      finalNarration || null,
+      txnClientId,
+      txnUnitPrice,
+      txnTotalValue
+    ]);
 
     const txnId = txnResult.insertId;
 
-    // Fetch product name and model
-    const [pRows] = await conn.query('SELECT product_name, model_no FROM products WHERE id = ?', [product_id]);
-    const pName = pRows.length > 0 ? pRows[0].product_name : 'Unknown';
-    const pModel = pRows.length > 0 ? pRows[0].model_no : '';
+    // Reuse pName and pModel retrieved earlier in the function block
 
     // Fetch warehouse names
     const [wRows] = await conn.query('SELECT name FROM warehouses WHERE id = ?', [warehouse_id]);

@@ -87,6 +87,13 @@ export function useInventoryData(options: UseInventoryDataOptions): UseInventory
                 minStock: row.min_stock || 0,
                 unit: row.unit || 'pcs',
                 stock: row.stock || {},
+                leadTimeDays: row.lead_time_days || 0,
+                safetyStock: row.safety_stock || 0,
+                preferredSupplierId: row.preferred_supplier_id || null,
+                preferredSupplierName: row.preferred_supplier_name || 'Direct/Default Supplier',
+                reorderQuantity: row.reorder_quantity || 0,
+                purchasePrice: parseFloat(row.purchase_price) || 0,
+                sellingPrice: parseFloat(row.selling_price) || 0,
               }));
             })
             .catch((err) => {
@@ -114,6 +121,13 @@ export function useInventoryData(options: UseInventoryDataOptions): UseInventory
                 minStock: row.min_stock || 0,
                 unit: row.unit || 'pcs',
                 stock: {},
+                leadTimeDays: row.lead_time_days || 0,
+                safetyStock: row.safety_stock || 0,
+                preferredSupplierId: row.preferred_supplier_id || null,
+                preferredSupplierName: row.preferred_supplier_name || 'Direct/Default Supplier',
+                reorderQuantity: row.reorder_quantity || 0,
+                purchasePrice: parseFloat(row.purchase_price) || 0,
+                sellingPrice: parseFloat(row.selling_price) || 0,
               }));
             })
             .catch((err) => {

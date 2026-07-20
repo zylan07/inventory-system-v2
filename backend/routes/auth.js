@@ -88,7 +88,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        role: user.role
+        role: user.role,
+        language: user.language
       }
     });
 
@@ -326,7 +327,8 @@ router.post('/google-login', async (req, res) => {
         email: user.email,
         role: user.role,
         name: user.name,
-        profile_image: user.profile_image
+        profile_image: user.profile_image,
+        language: user.language
       }
     });
   } catch (err) {
