@@ -82,4 +82,40 @@ router.put('/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /warehouses/:id - delete a warehouse (Admin only)
+router.delete('/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const pool = getPool();
+    const [existing] = await pool.query('SELECT name FROM warehouses WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Warehouse not found' });
+    }
+    const whName = existing[0].name;
+
+    // Check if there are transactions associated
+    const [txs] = await pool.query('SELECT COUNT(*) as count FROM transactions WHERE warehouse_id = ? OR from_warehouse_id = ? OR to_warehouse_id = ?', [id, id, id]);
+    if (txs[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete warehouse because it is referenced in transaction history logs.' });
+    }
+
+    await pool.query('DELETE FROM warehouses WHERE id = ?', [id]);
+
+    await logAction(req, {
+      module: 'Warehouse',
+      action: 'DELETE_WAREHOUSE',
+      reference_type: 'warehouses',
+      reference_id: id,
+      old_value: { name: whName },
+      new_value: null,
+      description: `Warehouse deleted: ${whName} by Admin`
+    });
+
+    res.json({ success: true, message: 'Warehouse deleted successfully' });
+  } catch (err) {
+    console.error('Failed to delete warehouse:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to delete warehouse: ' + err.message });
+  }
+});
+
 module.exports = router;

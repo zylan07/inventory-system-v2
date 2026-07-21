@@ -178,6 +178,27 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     }
   };
 
+  const handleDeleteWarehouse = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to remove the warehouse "${name}"?\n\nThis will also delete any stock association, but will fail if the warehouse is referenced in transaction logs.`)) {
+      return;
+    }
+    try {
+      const res = await apiFetch(`/warehouses/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast("Warehouse removed successfully", "success");
+        fetchWarehousesList();
+        if (refresh) refresh();
+      } else {
+        const data = await res.json();
+        showToast(data.message || "Failed to remove warehouse", "error");
+      }
+    } catch (err) {
+      showToast("Error removing warehouse", "error");
+    }
+  };
+
   // Perform final product creation API call
   const performProductSave = async (dataToSave: typeof formData) => {
     setIsSubmitting(true);
@@ -967,17 +988,27 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
                         ) : (
                           <>
                             <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{wh.name}</span>
-                            <button 
-                              type="button" 
-                              className="btn-secondary" 
-                              onClick={() => {
-                                setEditingWhId(wh.id);
-                                setEditingWhName(wh.name);
-                              }}
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', fontWeight: 600 }}
-                            >
-                              Rename
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button 
+                                type="button" 
+                                className="btn-secondary" 
+                                onClick={() => {
+                                  setEditingWhId(wh.id);
+                                  setEditingWhName(wh.name);
+                                }}
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', fontWeight: 600 }}
+                              >
+                                Rename
+                              </button>
+                              <button 
+                                type="button" 
+                                className="btn-secondary" 
+                                onClick={() => handleDeleteWarehouse(wh.id, wh.name)}
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>

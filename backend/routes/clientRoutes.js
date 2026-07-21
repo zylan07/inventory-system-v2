@@ -129,7 +129,7 @@ router.get('/', requireAdminOrManager, async (req, res) => {
 });
 
 // GET /clients/all - Export/Selector utility listing all clients without paging
-router.get('/all', requireAdminOrManager, async (req, res) => {
+router.get('/all', async (req, res) => {
   try {
     const thresholds = await getClientDaysThresholds();
     const [rows] = await getPool().query(`
