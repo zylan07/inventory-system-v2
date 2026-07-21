@@ -20,7 +20,8 @@ router.get('/', authMiddleware, async (req, res) => {
     const [settRows] = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'business_configuration'");
     if (settRows.length > 0) {
       try {
-        const config = JSON.parse(settRows[0].setting_value);
+        const rawVal = settRows[0].setting_value;
+        const config = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
         if (config?.thresholds?.global_safety_multiplier) {
           safetyMultiplier = parseFloat(config.thresholds.global_safety_multiplier) || 1.0;
         }

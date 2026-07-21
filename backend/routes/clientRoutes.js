@@ -534,8 +534,17 @@ router.delete('/:id', requireAdminOrManager, async (req, res) => {
 
     res.json({ success: true, message: 'Client deleted successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to delete client' });
+    console.error('Failed to delete client:', err);
+    let userMessage = 'Failed to delete client.';
+    let statusCode = 500;
+
+    if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.code === 'ER_ROW_IS_REFERENCED' || err.message.includes('foreign key constraint fails')) {
+      statusCode = 409;
+      userMessage = `Client "${exists[0].company_name}" cannot be deleted because they are referenced in transaction history logs.`;
+    } else {
+      userMessage = `Failed to delete client: ${err.message}`;
+    }
+    res.status(statusCode).json({ success: false, message: userMessage });
   }
 });
 

@@ -56,6 +56,19 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
+  // Disable caching in development / local environments to prevent stale Turbopack chunks
+  if (
+    url.hostname === 'localhost' || 
+    url.hostname === '127.0.0.1' || 
+    url.hostname.startsWith('192.168.') || 
+    url.hostname.startsWith('10.') || 
+    url.hostname.startsWith('172.') ||
+    url.port === '3000' ||
+    url.port === '5000'
+  ) {
+    return; // Pass through to network natively
+  }
+
   // Skip API requests and non-GET requests entirely
   if (request.method !== 'GET' || isApiRequest(url.pathname)) {
     return; // Pass through to network natively

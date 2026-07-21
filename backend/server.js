@@ -40,7 +40,37 @@ app.use('/warehouses', authMiddleware, warehouseRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-initDb().then(() => {
+const { getTransporter } = require('./utils/mailer');
+
+initDb().then(async () => {
+  // Log SMTP environment parameters safely on startup
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  console.log(`EMAIL_USER: ${user}`);
+  console.log(`EMAIL_PASS exists: ${!!pass}`);
+  console.log(`EMAIL_PASS length: ${pass ? pass.length : 0}`);
+
+  // Verify SMTP connection on startup
+  try {
+    const transporter = getTransporter();
+    await transporter.verify();
+    console.log('✅ SMTP connection verified successfully!');
+  } catch (err) {
+    console.error('❌ SMTP authentication failed.');
+    console.error('Reason:');
+    if (err.code === 'EAUTH') {
+      if (pass && pass.length === 16) {
+        console.error('Invalid App Password.');
+      } else {
+        console.error('Application-specific password required. (Primary password used instead of a 16-character Gmail App Password)');
+      }
+    } else if (!user || !pass) {
+      console.error('Environment variables not loaded.');
+    } else {
+      console.error(err.message);
+    }
+  }
+
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });

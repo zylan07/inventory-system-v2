@@ -262,7 +262,7 @@ console.log("TOAST TRIGGERED");
           {type === 'OUTWARD' && (
             <div className="form-group" style={{ flex: 2, minWidth: '200px', position: 'relative' }}>
               <label className="form-label" style={{ fontSize: isBasicUser ? '1rem' : '0.875rem' }}>
-                Client Selection (Optional)
+                Client Selection *
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input

@@ -178,7 +178,7 @@ async function createTables() {
         type ENUM('INWARD', 'OUTWARD', 'TRANSFER', 'ADJUSTMENT') NOT NULL,
         product_id INT NOT NULL,
         quantity INT NOT NULL,
-        warehouse_id VARCHAR(50) NOT NULL,
+        warehouse_id VARCHAR(50) NULL,
         from_warehouse_id VARCHAR(50) DEFAULT NULL,
         to_warehouse_id VARCHAR(50) DEFAULT NULL,
         user_email VARCHAR(255) DEFAULT NULL,
@@ -188,7 +188,7 @@ async function createTables() {
         total_value DECIMAL(12, 2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
-        FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE RESTRICT,
+        FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
         FOREIGN KEY (from_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
         FOREIGN KEY (to_warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
         FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
@@ -260,7 +260,7 @@ async function createTables() {
     }
 
     // Clean up deprecated settings keys
-    await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info', 'business_configuration')");
+    await conn.query("DELETE FROM system_settings WHERE setting_key NOT IN ('company_info', 'business_configuration', 'schema_migrations')");
 
     // ------------------------------------------------------------
     // CLIENT FEEDBACK ROUND 3 MIGRATIONS
@@ -337,6 +337,103 @@ async function createTables() {
       WHERE t.to_warehouse_name IS NULL AND t.to_warehouse_id IS NOT NULL
     `);
     console.log('✅ Backfilled empty warehouse name snapshot fields in transactions table.');
+
+    // 4. One-time database schema migration for warehouse deletion constraints
+    let migrationsRun = { v3_legacy_fks_cleaned: false, v3_transactions_fk_altered: false };
+    try {
+      const [migRows] = await conn.query("SELECT setting_value FROM system_settings WHERE setting_key = 'schema_migrations'");
+      if (migRows.length > 0) {
+        migrationsRun = migRows[0].setting_value || migrationsRun;
+      }
+    } catch (migErr) {
+      console.log('ℹ️ Check migrations table status/skipped:', migErr.message);
+    }
+
+    let migrationStateChanged = false;
+
+    // A. Alter transactions.warehouse_id constraint
+    if (!migrationsRun.v3_transactions_fk_altered) {
+      try {
+        // Alter column to be NULLable first
+        await conn.query('ALTER TABLE transactions MODIFY COLUMN warehouse_id VARCHAR(50) NULL');
+
+        // Query constraint name
+        const [fkRows] = await conn.query(`
+          SELECT CONSTRAINT_NAME 
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+          WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'transactions' 
+            AND COLUMN_NAME = 'warehouse_id' 
+            AND REFERENCED_TABLE_NAME = 'warehouses'
+        `);
+
+        if (fkRows.length > 0) {
+          const constraintName = fkRows[0].CONSTRAINT_NAME;
+          // Drop the old FK
+          await conn.query('ALTER TABLE transactions DROP FOREIGN KEY ' + constraintName);
+          console.log('✅ [Migration] Dropped old foreign key: ' + constraintName);
+        }
+
+        // Add the new FK with ON DELETE SET NULL
+        try {
+          await conn.query('ALTER TABLE transactions ADD CONSTRAINT fk_transactions_warehouse FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL');
+          console.log('✅ [Migration] Configured transactions.warehouse_id to ON DELETE SET NULL.');
+        } catch (addErr) {
+          if (!addErr.message.includes('Duplicate key name') && !addErr.message.includes('already exists')) {
+            throw addErr;
+          }
+        }
+        
+        migrationsRun.v3_transactions_fk_altered = true;
+        migrationStateChanged = true;
+      } catch (e) {
+        console.error('❌ [Migration] transactions.warehouse_id foreign key update failed:', e.message);
+      }
+    }
+
+    // B. Clean up any legacy table foreign keys referencing warehouses
+    if (!migrationsRun.v3_legacy_fks_cleaned) {
+      try {
+        const [legacyFks] = await conn.query(`
+          SELECT TABLE_NAME, CONSTRAINT_NAME 
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+          WHERE REFERENCED_TABLE_NAME = 'warehouses'
+            AND TABLE_SCHEMA = DATABASE()
+        `);
+
+        const activeTables = ['stock', 'transactions', 'purchase_queue'];
+
+        for (const row of legacyFks) {
+          if (!activeTables.includes(row.TABLE_NAME)) {
+            console.log('⚠️ [Migration] Legacy constraint found: table ' + row.TABLE_NAME + ', constraint ' + row.CONSTRAINT_NAME + '. Dropping...');
+            try {
+              await conn.query('ALTER TABLE ' + row.TABLE_NAME + ' DROP FOREIGN KEY ' + row.CONSTRAINT_NAME);
+              console.log('✅ [Migration] Successfully dropped legacy constraint ' + row.CONSTRAINT_NAME + ' from ' + row.TABLE_NAME);
+            } catch (dropErr) {
+              console.error('❌ [Migration] Failed to drop constraint ' + row.CONSTRAINT_NAME + ':', dropErr.message);
+            }
+          }
+        }
+        
+        migrationsRun.v3_legacy_fks_cleaned = true;
+        migrationStateChanged = true;
+      } catch (err) {
+        console.error('❌ [Migration] Legacy foreign key constraint cleanup failed:', err.message);
+      }
+    }
+
+    // C. Save migration status if state changed
+    if (migrationStateChanged) {
+      try {
+        await conn.query(
+          "INSERT INTO system_settings (setting_key, setting_value) VALUES ('schema_migrations', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+          [JSON.stringify(migrationsRun), JSON.stringify(migrationsRun)]
+        );
+        console.log('✅ [Migration] Schema migration status updated and saved.');
+      } catch (saveErr) {
+        console.error('❌ [Migration] Failed to save schema migration status:', saveErr.message);
+      }
+    }
 
   } catch (error) {
     console.error('❌ Error creating tables:', error.message);

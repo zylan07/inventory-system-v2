@@ -5,11 +5,15 @@ let transporter;
 function getTransporter() {
   if (!transporter) {
     try {
+      // Sanitize user (trim whitespaces) and password (remove spaces/quotes)
+      const userVal = (process.env.EMAIL_USER || '').trim();
+      const passVal = (process.env.EMAIL_PASS || '').replace(/\s+/g, '').replace(/['"]/g, '');
+
       transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
+          user: userVal,
+          pass: passVal,
         },
       });
       console.log("📬 NodeMailer configured with Gmail SMTP");

@@ -93,10 +93,14 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     }
     const whName = existing[0].name;
 
-    // Check if there are transactions associated
-    const [txs] = await pool.query('SELECT COUNT(*) as count FROM transactions WHERE warehouse_id = ? OR from_warehouse_id = ? OR to_warehouse_id = ?', [id, id, id]);
-    if (txs[0].count > 0) {
-      return res.status(400).json({ success: false, message: 'Cannot delete warehouse because it is referenced in transaction history logs.' });
+    // Check if there is any active stock in the warehouse
+    const [activeStock] = await pool.query('SELECT SUM(quantity) as total FROM stock WHERE warehouse_id = ?', [id]);
+    const totalQty = activeStock[0]?.total ? parseInt(activeStock[0].total) : 0;
+    if (totalQty > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Warehouse "${whName}" cannot be deleted because it still contains active stock (${totalQty} units). Please transfer all stock first.` 
+      });
     }
 
     await pool.query('DELETE FROM warehouses WHERE id = ?', [id]);
@@ -113,8 +117,24 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 
     res.json({ success: true, message: 'Warehouse deleted successfully' });
   } catch (err) {
-    console.error('Failed to delete warehouse:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to delete warehouse: ' + err.message });
+    console.error('Failed to delete warehouse:', err);
+    let userMessage = 'Failed to delete warehouse.';
+    let statusCode = 500;
+
+    if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.code === 'ER_ROW_IS_REFERENCED' || err.message.includes('foreign key constraint fails')) {
+      statusCode = 409; // Conflict
+      if (err.message.includes('products')) {
+        userMessage = `Warehouse "${whName}" cannot be deleted because it is still referenced by the Products table.`;
+      } else if (err.message.includes('stock')) {
+        userMessage = `Warehouse "${whName}" cannot be deleted because it still contains active product stock records. Please transfer or clear all stock.`;
+      } else {
+        userMessage = `Warehouse "${whName}" cannot be deleted because a foreign key constraint still exists in the database. (Details: ${err.message})`;
+      }
+    } else {
+      userMessage = `Failed to delete warehouse: ${err.message}`;
+    }
+
+    res.status(statusCode).json({ success: false, message: userMessage });
   }
 });
 

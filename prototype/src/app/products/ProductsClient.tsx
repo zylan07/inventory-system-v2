@@ -84,9 +84,10 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
   });
   const [isEditingSubmitting, setIsEditingSubmitting] = useState(false);
 
+  const isAnyModalOpen = !!(showImportModal || showEditModal || showAddModal || showWarehouseModal || showDuplicateModal);
   // Prevent background scrolling when modals are open
   useEffect(() => {
-    if (showImportModal || showEditModal) {
+    if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -94,7 +95,7 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showImportModal, showEditModal]);
+  }, [isAnyModalOpen]);
 
   // Read edit parameter to trigger editing details modal
   useEffect(() => {
@@ -825,8 +826,15 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
         {/* Add One Product Modal */}
         {showAddModal && (
           <div style={modalOverlayStyle}>
-            <div style={{ ...modalContentStyle, maxWidth: '500px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+            <div style={{ 
+              ...modalContentStyle, 
+              maxWidth: '500px', 
+              maxHeight: '90vh', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden' 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', flexShrink: 0 }}>
                 <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Add New Product</h2>
                 <button 
                   type="button" 
@@ -836,93 +844,95 @@ export default function ProductsClient({ initialData, refresh }: { initialData: 
                   &times;
                 </button>
               </div>
-              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div>
-                  <label style={labelStyle}>Group *</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="e.g. Machinery"
-                    value={formData.group} 
-                    onChange={e => setFormData({ ...formData, group: e.target.value })} 
-                    style={inputStyle}
-                  />
-                </div>
-                
-                <div>
-                  <label style={labelStyle}>Product Name *</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="e.g. Semi automatic strapping machine"
-                    value={formData.product} 
-                    onChange={e => setFormData({ ...formData, product: e.target.value })} 
-                    style={inputStyle}
-                  />
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1, overflow: 'hidden' }}>
+                <div style={{ paddingRight: '0.25rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={labelStyle}>Group *</label>
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="e.g. Machinery"
+                      value={formData.group} 
+                      onChange={e => setFormData({ ...formData, group: e.target.value })} 
+                      style={inputStyle}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={labelStyle}>Product Name *</label>
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="e.g. Semi automatic strapping machine"
+                      value={formData.product} 
+                      onChange={e => setFormData({ ...formData, product: e.target.value })} 
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Model Number *</label>
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="e.g. PA-60"
+                      value={formData.model} 
+                      onChange={e => setFormData({ ...formData, model: e.target.value })} 
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Unit</label>
+                    <input 
+                      type="text" 
+                      placeholder="pcs"
+                      value={formData.unit} 
+                      onChange={e => setFormData({ ...formData, unit: e.target.value })} 
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Minimum Stock Level</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      value={formData.minStock} 
+                      onChange={e => setFormData({ ...formData, minStock: parseInt(e.target.value) || 0 })} 
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Lead Time (Days)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="1"
+                      placeholder="0"
+                      value={formData.leadTimeDays} 
+                      onChange={e => {
+                        const val = parseInt(e.target.value);
+                        setFormData({ ...formData, leadTimeDays: isNaN(val) ? 0 : val });
+                      }} 
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Description</label>
+                    <textarea 
+                      rows={3}
+                      placeholder="Optional details..."
+                      value={formData.description} 
+                      onChange={e => setFormData({ ...formData, description: e.target.value })} 
+                      style={{ ...inputStyle, minHeight: '60px' }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label style={labelStyle}>Model Number *</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="e.g. PA-60"
-                    value={formData.model} 
-                    onChange={e => setFormData({ ...formData, model: e.target.value })} 
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Unit</label>
-                  <input 
-                    type="text" 
-                    placeholder="pcs"
-                    value={formData.unit} 
-                    onChange={e => setFormData({ ...formData, unit: e.target.value })} 
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Minimum Stock Level</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    value={formData.minStock} 
-                    onChange={e => setFormData({ ...formData, minStock: parseInt(e.target.value) || 0 })} 
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Lead Time (Days)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    step="1"
-                    placeholder="0"
-                    value={formData.leadTimeDays} 
-                    onChange={e => {
-                      const val = parseInt(e.target.value);
-                      setFormData({ ...formData, leadTimeDays: isNaN(val) ? 0 : val });
-                    }} 
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Description</label>
-                  <textarea 
-                    rows={3}
-                    placeholder="Optional details..."
-                    value={formData.description} 
-                    onChange={e => setFormData({ ...formData, description: e.target.value })} 
-                    style={{ ...inputStyle, minHeight: '60px' }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', flexShrink: 0 }}>
                   <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                   <button type="submit" className="btn-primary" disabled={isSubmitting}>
                     {isSubmitting ? "Saving..." : "Save Product"}
