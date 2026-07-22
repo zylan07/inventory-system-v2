@@ -63,7 +63,8 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState<'All' | 'Alerts' | 'Transactions'>('All');

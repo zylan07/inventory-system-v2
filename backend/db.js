@@ -14,14 +14,35 @@ let pool;
 
 async function initDb() {
   try {
-    // Step 1: Connect without selecting DB
-    const connection = await mysql.createConnection(dbConfig);
+    let connection;
+    let dbExists = false;
 
-    // Step 2: Create database if not exists
-    await connection.query(`CREATE DATABASE IF NOT EXISTS ${DB_NAME}`);
-    console.log('✅ Database checked/created successfully.');
+    // Step 1: Attempt to connect directly to the configured database
+    try {
+      connection = await mysql.createConnection({
+        ...dbConfig,
+        database: DB_NAME
+      });
+      console.log(`✅ Connected directly to existing database: ${DB_NAME}`);
+      dbExists = true;
+      await connection.end();
+    } catch (directError) {
+      // If error is not 'Unknown database' (1049 / ER_BAD_DB_ERROR), propagate it.
+      // Hostinger incorrect credentials will throw ER_ACCESS_DENIED_ERROR (1045) here,
+      // which we propagate so it fails with a clear message and doesn't try setup.
+      if (directError.errno !== 1049 && directError.code !== 'ER_BAD_DB_ERROR') {
+        throw directError;
+      }
+    }
 
-    await connection.end();
+    // Step 2: If database does not exist, try to create it (local development fallback)
+    if (!dbExists) {
+      console.log(`ℹ️ Database "${DB_NAME}" does not exist. Attempting to create...`);
+      const setupConn = await mysql.createConnection(dbConfig);
+      await setupConn.query(`CREATE DATABASE IF NOT EXISTS ${DB_NAME}`);
+      console.log('✅ Database created successfully.');
+      await setupConn.end();
+    }
 
     // Step 3: Create pool with DB
     pool = mysql.createPool({

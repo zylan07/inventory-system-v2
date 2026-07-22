@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function ClientAnalyticsPage() {
+export default function ClientAnalytics() {
   const router = useRouter();
   useEffect(() => {
     router.replace('/clients');

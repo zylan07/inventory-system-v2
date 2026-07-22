@@ -12,7 +12,8 @@ type AuthMode = 'login' | 'forgot_password' | 'verify_otp' | 'reset_password';
 export default function LoginPage() {
   const { userRole, login } = useAuth();
   const router = useRouter();
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
 
   const [mode, setMode] = useState<AuthMode>('login');
   

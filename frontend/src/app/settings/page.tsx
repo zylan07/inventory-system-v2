@@ -28,7 +28,8 @@ export default function SettingsPage() {
   const { showToast } = useToast();
   const { userRole } = useAuth();
   const router = useRouter();
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
 
   // Settings states
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({ name: '', address: '', phone: '', email: '', website: '', gstNumber: '', logoUrl: null, footerText: '' });

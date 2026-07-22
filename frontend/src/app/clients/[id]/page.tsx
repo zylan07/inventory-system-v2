@@ -253,7 +253,7 @@ export default function ClientProfilePage({ params }: { params: { id: string } }
       </div>
 
       {/* Tab content panels */}
-      <div className="card" style={{ padding: 0, overflowHidden: 'true' }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         
         {/* PANEL 1: Purchase timeline log */}
         {activeTab === 'timeline' && (

@@ -72,7 +72,8 @@ export default function Sidebar() {
   const { userRole } = useAuth();
   const { t } = useLanguage();
   const pathname = usePathname();
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('INVENTRA');
   const [isOpen, setIsOpen] = useState(false);

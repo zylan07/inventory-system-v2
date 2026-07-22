@@ -19,7 +19,8 @@ type UserProfile = {
 export default function ProfileClient({ initialProfile, refresh }: { initialProfile: UserProfile; refresh: () => void }) {
   const router = useRouter();
   const { showToast } = useToast();
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
 
   // --- Section 1: Account Information States ---
   const [name, setName] = useState(initialProfile.name || "");

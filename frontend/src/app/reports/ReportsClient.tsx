@@ -22,7 +22,8 @@ export default function ReportsClient({ initialData }: { initialData: InventoryD
   const { userRole } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('transactions');
   const [companyName, setCompanyName] = useState('INVENTRA');
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = apiBase === '' ? '/api' : apiBase;
 
   useEffect(() => {
     const fetchBranding = async () => {
