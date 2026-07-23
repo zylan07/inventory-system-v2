@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "next build frontend",
+    "build": "cd frontend && next build",
     "start": "node server.js",
     "migrate": "node backend/migrate_users.js"
   },
